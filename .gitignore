@@ -1,2 +1,7 @@
-./.CoqMakefile.d
-./CoqMakefile.conf
+.CoqMakefile.d
+CoqMakefile.conf
+src/*/.*.aux
+src/*/*.glob
+src/*/*.vo
+src/*/*.vok
+src/*/*.vos
