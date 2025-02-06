@@ -26,6 +26,7 @@ Import SystemG.
 Section WorldDef.
     Context `{Σ : gFunctors}.
 
+    (* does iProp need to be guarded here *)
     Definition Rel : ofe := prodO exprO exprO -n> iProp Σ.
     Definition SomeRel : ofe := prodO (prodO typeO typeO) Rel.
 
@@ -35,6 +36,74 @@ Section WorldDef.
 
     Definition World_cmra : cmra := prodR (prodR (prodR stateMap stateMap) concMap) relMap.
 
+    (* Attempt : trying to override/extend the validity of the compositional camera
+      to include the invariant on worlds. (as opposed to enforcing it with Own/Inv/World Satisfaction)  *)
+
+    Definition World : ofe := cmra_car World_cmra.
+
+    Definition Conc (c : concMap) : Prop. Admitted.
+
+    Definition well_typed_stateMap (s : stateMap) : Prop. Admitted.
+
+    Definition coherentMaps (eta : concMap) (rho : relMap): Prop. Admitted.
+
+    Definition validSomeRel (validWorld : World -> Prop)(s : agree SomeRel) : Prop := 
+    exists (w : World), validWorld  w.
+(*     pose proof (elem_of_agree s).
+    Admitted. *)
+
+
+    Fixpoint wValidNFix (n : nat) : World -> Prop := fun w => 
+    match n with 
+    | O => True (* TODO *)
+    | S n => 
+        let s1 : stateMap := w.1.1.1 in
+        let s2 : stateMap := w.1.1.2 in
+        let eta : concMap := w.1.2 in 
+        let rho : relMap := w.2 in 
+            (* reusing the validity of the the AgreeMap structure *)
+            validN (S n) s1 /\
+            validN (S n) s2 /\
+            validN (S n) eta /\
+            validN (S n) rho /\
+            (* validity of World *)
+            (* state maps only hold well typed terms *)
+            well_typed_stateMap s1 /\
+            well_typed_stateMap s2 /\
+            (* Conc: valid concretization map *)
+            Conc eta /\ 
+            (* Interp: valid semantic relation map *)
+            map_Forall (fun k v => validSomeRel (wValidNFix n) v ) rho /\
+            (* domains line up *)
+            dom eta = dom rho /\
+            (* partial bijection of eta and rho *)
+            coherentMaps eta rho 
+    end.
+
+    (* override the existing instance (hide the other instance) 
+       or just rename the type of the carrier ? *)
+
+    Local Instance World_validN: ValidN World  := wValidNFix.
+    
+    Local Instance World_valid : Valid World := fun w => forall n, wValidNFix n w.
+
+
+    (* using existin core should be fine *)
+    Local Instance World_pcore  : PCore World . apply _. Defined.
+
+    (* same with Op *)
+    Local Instance World_op : Op World. apply _. Defined.
+
+    (* Should be able to recyle some of the proofs from the compositional camera *)
+    Lemma World_cmra_mixin : CmraMixin World.
+    Proof.
+    split.
+    4:{ intros. eauto. }
+    3:{ intros. admit. } Admitted.
+    
+
+    Canonical Structure World_cmra : cmra := Cmra World World_cmra_mixin.    
+        
 End WorldDef.
 
     Class logrelSig (Σ : gFunctors) := {
@@ -45,7 +114,12 @@ End WorldDef.
         world_name : gname ;
     }.
 
+    (* TODO.. determine a proper way to map concrete program state into 
+              ghost state.
 
+              It would be nice to use WP rules to "execute" the program to a value.. 
+              but we have two executions running in parallel
+     *)
     Global Instance heapIG_irisG `{logrelSig Σ} : irisGS SystemG_lang Σ := {
         num_laters_per_step _ := 0;
         state_interp s  _ _ _ := ghost_map_auth heap_name 1 s;
@@ -70,7 +144,9 @@ End WorldDef.
     Admitted.
 
     (* Here is the tricky part.. the world invariant uses Atom and Atom uses world_inv
-    need a mutual guarded fixpoint  *)
+    need a mutual guarded fixpoint..?  
+    https://plv.mpi-sws.org/coqdoc/iris/iris.algebra.ofe.html#fixpointAB
+    *)
     Definition World_Inv (w : World) : iProp Σ :=
         match w with 
         | (((s1,s2),eta),rho) => Conc_Inv eta ∗ ⌜dom eta = dom rho⌝%I
@@ -109,6 +185,8 @@ End WorldDef.
             | ((t1,t2),r) => True%I 
         end.
 
+    (* Here the issue with the current language definition is obvious.. 
+       Autosubst is handling renaming of type variables.. our world maps are not aware of renamings *)
     Definition interp_TyVar (v : var): VRelType (TVar v). 
     Admitted.
         (*fun rho => fun p => match (p !! v) with 
@@ -194,6 +272,16 @@ End WorldDef.
     Local Definition inv_def `{!invGS_gen hlc Σ} (N : namespace) (P : iProp Σ) : iProp Σ :=
         □ ∀ E, ⌜↑N ⊆ E⌝ → |={E,E ∖ ↑N}=> ▷ P ∗ (▷ P ={E ∖ ↑N,E}=∗ True).
      *)
+     Print own.
+     Locate own.
+     Check own_def.
+
+    Check inv_alloc.
+    Check own_mono.
+    Lemma emptyInv (w : World ): ⊢ |==> inv inv_name (World_Inv w).
+    Proof.
+        iAssert (▷ (World_Inv w))%I as "D". admit.
+        iApply inv_alloc.
     Lemma test : ⊢ interp TBool empty ((BoolV true) ,(BoolV false)).
     Proof.
         simpl.
@@ -207,7 +295,10 @@ End WorldDef.
             admit.
          }
         iNext.
+        (* this part is trickier.. 
+            any interaction with inv and own need to be under a basic or fancy update modality *)
         iSplit. {
+            Check inv_alloc.
             Check own_inv.
             Search (inv).
         Abort.

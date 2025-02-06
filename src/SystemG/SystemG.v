@@ -6,7 +6,7 @@ Require Import Autosubst.Autosubst.
 From Coq Require Import Unicode.Utf8.
 Module SystemG.
 
-
+(*  This is currently a copy of OSum *)
 Inductive type :=
   | TUnit :  type
   | TInt : type
