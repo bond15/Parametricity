@@ -8,8 +8,9 @@ From iris.algebra Require Import gmap ofe excl cofe_solver.
 Module world.
 Check fixpoint.
 
-
-
+Definition locO : ofe := leibnizO loc.
+Definition typeO : ofe := leibnizO type.
+Definition typeOF : oFunctor := constOF typeO.
 Lemma sndCont (A B :ofe)`{bc : Cofe} : Contractive (@snd A B).
 intros.
 vm_compute.
@@ -102,18 +103,18 @@ Definition AtomF (t1 t2 : type) : oFunctor :=
         end
       ) rho
     end.
-  intros x. destruct x. simpl in o. simpl in o0.
+(*   intros x. destruct x. simpl in o. simpl in o0.
   destruct o0.
   destruct later_car.
   destruct o0.
   destruct o.
-  destruct o0.
+  destruct o0. *)
 
 
 
-  Definition Atom_inv (t1 t2 : type) : Atom t1 t2 -n> iProp
 
-(*   
+(*     Definition Atom_inv (t1 t2 : type) : Atom t1 t2 -n> iProp
+
 
   Simple test! and it works!
 Definition AtomF (t1 t2 : type) : oFunctor :=
@@ -340,7 +341,8 @@ Definition map_Forall_bi `{Lookup K A M} (P : K → A → iProp triv_sig ) : M �
 
 (* This could probably be simplified ALOT, use it for now *)
 
-Equations Atom (t1 t2 : type) : AtomT t1 t2 -> iProp triv_sig :=
+(* can use map_Forall, need to inline a fixpoint *)
+Fail Equations Atom (t1 t2 : type) : AtomT t1 t2 -> iProp triv_sig :=
 Atom t1 t2 (AT (AtomC t1' t2' w e1 e2) p1 p2) := 
 
   (▷ (World w)) ∗ ⌜ expr_store_typed (ws1 w) e1 t1 ⌝ ∗ ⌜ expr_store_typed (ws2 w) e2 t2  ⌝
@@ -369,7 +371,7 @@ Example wt : WorldT := WorldC empty empty empty (InterpC empty).
 Example aT' : AtomT' := AtomC TBool TBool wt (Bool true) (Bool false).
 Example aaT : AtomT TBool TBool := AT aT' eq_refl eq_refl.
 
-
+(* 
 Example prf : ⊢@{iProp triv_sig} Atom TBool TBool aaT.
 split.
 intros.
@@ -387,3 +389,5 @@ simpl.
 Search (Atom).
 unfold Atom.
 
+Abort. *)
+End world. (* oops *)

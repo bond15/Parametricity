@@ -2,4 +2,6 @@
 
 
 -Q ./autosub/autosubst/theories/ AutoSubst
+src/OSum
 src/Learning
+src/SystemG

@@ -4,7 +4,7 @@ From stdpp Require Import gmap.
 From iris.prelude Require Import options.
 Require Import Autosubst.Autosubst.
 From Coq Require Import Unicode.Utf8.
-Module OSum.
+Module SystemG.
 
 
 Inductive type :=
@@ -523,16 +523,16 @@ this makes sense for SystemF with store
   Canonical Structure stateO := leibnizO state.
   Canonical Structure valO := leibnizO val.
   Canonical Structure exprO := leibnizO expr.
-End OSum.
+End SystemG.
 
-Canonical Structure OSum_ectxi_lang :=
-  EctxiLanguage OSum.lang_mixin.
-Canonical Structure OSum_ectx_lang :=
-  EctxLanguageOfEctxi OSum_ectxi_lang.
-Canonical Structure OSum_lang :=
-  LanguageOfEctx OSum_ectx_lang.
+Canonical Structure SystemG_ectxi_lang :=
+  EctxiLanguage SystemG.lang_mixin.
+Canonical Structure SystemG_ectx_lang :=
+  EctxLanguageOfEctxi SystemG_ectxi_lang.
+Canonical Structure SystemG_lang :=
+  LanguageOfEctx SystemG_ectx_lang.
 
-Export OSum.
+Export SystemG.
 
 Global Hint Extern 20 (PureExec _ _ _) => progress simpl : typeclass_instances.
 

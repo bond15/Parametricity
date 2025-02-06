@@ -9,14 +9,14 @@ Require Import Autosubst.Autosubst.
 
 From Equations Require Import Equations.
 
-From MyProject.src.OSum Require Export OSum persistent_pred.
+From MyProject.src.SystemG Require Export SystemG persistent_pred.
 
 
 Definition iname : namespace := nroot .@ "iname".
 Check fixpoint.
 
 Module SysGLogrel.
-Import OSum.
+Import SystemG.
     Definition typeO : ofe := leibnizO type.
     Definition typeOF : oFunctor := typeO.
     Definition locO := natO.
@@ -46,7 +46,7 @@ End WorldDef.
     }.
 
 
-    Global Instance heapIG_irisG `{logrelSig Σ} : irisGS OSum_lang Σ := {
+    Global Instance heapIG_irisG `{logrelSig Σ} : irisGS SystemG_lang Σ := {
         num_laters_per_step _ := 0;
         state_interp s  _ _ _ := ghost_map_auth heap_name 1 s;
         fork_post _ := True%I;

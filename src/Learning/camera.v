@@ -1525,14 +1525,14 @@ Proof.
 Qed.
 
 
-
+(* 
 (* https://coq.inria.fr/doc/V8.19.0/refman/language/extensions/canonical.html#canonicalstructures*)
 Canonical Structure typeO := leibnizO type.
 Print discreteR.
 Check typeO.
 
 Lemma type_ra_mixin : RAMixin type.
-Canonical Structure typeO := discreteR type 0.
+Canonical Structure typeO := discreteR typeO.
 
 (* this is an ofe.. make it a camera*)
 
@@ -1549,4 +1549,4 @@ Canonical Structure typeStoreO := g
 *)
 
 Check prodO.
-Canonical Structure world0 := prodO typeO typeO.
+Canonical Structure world0 := prodO typeO typeO. *)
