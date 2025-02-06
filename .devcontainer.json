@@ -1,0 +1,8 @@
+{
+    "image": "coqiris",
+    "customizations": {
+        "vscode": {
+          "extensions": ["ms-azuretools.vscode-docker","maximedenes.vscoq"]
+        }
+      }
+}
