@@ -15,6 +15,7 @@ Inductive type :=
   | TProd : type → type → type
   | TArrow : type → type → type   
   | TVar (x : var)
+  (* removing type from  *)
   | TCase (τ : {bind type})
   | TForall (τ : {bind type})
   | TExist (τ : {bind type}).
@@ -60,8 +61,10 @@ Global Instance SubstLemmas_typer : SubstLemmas type. derive. Qed.
   | Fst (e : expr)
   | Snd (e : expr)
   (* OSum *)
-  | New (t : type) (e : {bind expr})
-  | Case (l : loc)
+(*    similar to TLam hiding types, do so here 
+ *)  | New (t : type) (e : {bind expr})
+(*   | New (e : {bind expr})
+ *)  | Case (l : loc)
   | Inj (sigma : expr )(e : expr)
   | CaseOf (d : expr) (i : expr) (e1 : {bind expr}) (e2 : expr)
   (* Polymorphic Types *)
@@ -132,9 +135,13 @@ Inductive typed (Γ : list type) : expr → type → Prop :=
     t1 :: Γ ⊢ₜ e3 : t2 -> 
     Γ ⊢ₜ e4 : t2 ->
     Γ ⊢ₜ CaseOf e1 e2 e3 e4 : t2
+    (* hmm *)
   | New_typed e1 t1 t2 :
     (TCase t1) :: Γ ⊢ₜ e1 : t2  ->
     Γ ⊢ₜ New t1 e1 : t2
+(*    New_typed e t :
+    (TCase t1) :: Γ ⊢ₜ e1 : t  ->
+    Γ ⊢ₜ New e : t  *)
 
   | If_typed e0 e1 e2 τ :
      Γ ⊢ₜ e0 : TBool → Γ ⊢ₜ e1 : τ → Γ ⊢ₜ e2 : τ → Γ ⊢ₜ If e0 e1 e2 : τ
@@ -377,8 +384,8 @@ Qed.
   | BinOpRCtx (op : binop) (v1 : val)
   | FstCtx
   | SndCtx
-  | NewCtx (t : type) (* maybe ? lets just reduce under new for now*)
-  | InjLCtx (e2 : expr)
+(*   | NewCtx (t : type) (* maybe ? lets just reduce under new for now*)
+ *)  | InjLCtx (e2 : expr)
   | InjRCtx (v1 : val)
   | CaseOfCtxOSUM (e2 : expr) (e3 : {bind expr}) (e4 : expr)
   | CaseOfCtxInj (v1 : val) (e3 : {bind expr}) (e4 : expr)
@@ -399,8 +406,8 @@ Qed.
     | BinOpRCtx op v1 => BinOp op (of_val v1) e
     | FstCtx => Fst e
     | SndCtx => Snd e
-    | NewCtx t => New t e
-    | InjLCtx e2 => Inj e e2
+(*     | NewCtx t => New t e
+ *)    | InjLCtx e2 => Inj e e2
     | InjRCtx v1 => Inj (of_val v1) e
     | CaseOfCtxOSUM e2 e3 e4 => CaseOf e e2 e3 e4 
     | CaseOfCtxInj v1 e3 e4 => CaseOf (of_val v1) e e3 e4
@@ -408,14 +415,17 @@ Qed.
     end.
 
 
-
-  Definition state : Type := gmap loc type.
-
+  Check gset.
+(*   Definition state : Type := gmap loc type.
+ *)
+ Definition state : Type := gset loc.
 
 (* Note that all of these rules effectivly ignore the  3rd and 6th arguements
 So really base_step : expr , state -> expr , state -> Prop
 this makes sense for SystemF with store
 *)
+Check up Var.
+Eval simpl in (Var 0).[Var 1/].
   Inductive base_step : expr → state → list Empty_set → expr → state → list expr → Prop :=
   (* Lam-β *)
   | LamBetaS e1 e2 v2 σ :
@@ -465,10 +475,29 @@ this makes sense for SystemF with store
         (CaseOf (Inj (Case l) e1) (Case l') e3 e4) σ [] 
         e4 σ []
 
+  | NewS t e v l s :     
+      to_val ((e.[Case l/])) = Some v -> 
+      ¬ l ∈ s ->
+      base_step (New t e) s [] (e.[Case l/]) (s ∪ {[l]}) [].
+
+(*   | NewS t e  v l s : 
+      to_val (e.[(of_val (CaseV l))/]) = Some v -> 
+      ¬ l ∈ s ->
+      base_step (New t (e.[(of_val (CaseV l))/])) s [] (e.[(of_val (CaseV l))/]) (s ∪ {[l]}) []. *)
+
+(*   | LamBetaS e1 e2 v2 σ :
+      to_val e2 = Some v2 →
+      base_step (App (Lam e1) e2) σ [] e1.[e2/] σ [] *)
   (* State update *)
-  | NewS t e1 v1 σ l :
+(*   | NewS t e e' v l s : 
+    to_val e = Some v -> 
+    e = e'.[(of_val (CaseV l))/] ->
+     ¬ l ∈ s ->
+    base_step (New t e) s [] e (s ∪ {[l]}) []. *)
+
+(*   | NewS t e1 v1 σ l :
     to_val e1 = Some v1 → σ !! l = None →
-    base_step (New t e1) σ [] e1 (<[l:=t]>σ) [].
+    base_step (New t e1) σ [] e1 (<[l:=t]>σ) []. *)
 
 
 
@@ -499,7 +528,8 @@ this makes sense for SystemF with store
 
   Lemma base_ctx_step_val Ki e σ1 κs e2 σ2 ef :
     base_step (fill_item Ki e) σ1 κs e2 σ2 ef → is_Some (to_val e).
-  Proof. destruct Ki; inversion_clear 1; simplify_option_eq; eauto. Qed.
+  Proof.
+    destruct Ki; try inversion_clear 1; try simplify_option_eq;  eauto.  Qed.
 
   Lemma fill_item_no_val_inj Ki1 Ki2 e1 e2 :
     to_val e1 = None → to_val e2 = None →
