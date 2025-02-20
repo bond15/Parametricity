@@ -19,31 +19,16 @@ Class logrelSig  Σ := Resources {
 
 Definition D `{logrelSig Σ}:= persistent_pred val (iProp Σ).
 
-Definition s1 : gset nat := union {[ 0]} {[ 1]}.
-Definition s2 : gset nat := union {[ 2]} {[ 1]}.
-
-Definition s3 : gset (nat * nat) := {[ pair 0  1]}.
-
-Check big_opS_op .
-
 Definition state_interp `{logrelSig Σ} (s : gset loc) : iProp Σ :=
     ∃ (s' : gset loc ) , 
         own name_set (gset_bij_auth (DfracOwn 1) (gset_cprod s s')) ∗
         [∗ set] l' ∈ s', (∃ (P : D), saved_pred_own l' (DfracDiscarded) P).
 
-(* Definition state_interp `{logrelSig Σ} (s : gset loc) : iProp Σ :=
-    ∃ (L : gset (loc * loc)) , 
-        own name_set (gset_bij_auth (DfracOwn 1) L) ∗
-        [∗ set] p ∈ L, ⌜p.1 ∈ s⌝ ∗ (∃ (P : D), saved_pred_own (p.2) (DfracDiscarded) P). *)
-
+(* not true.. the core of gset_bij_auth disallows this 
 Global Instance state_interp_persist `{logrelSig Σ} (s : gset loc) : Persistent (state_interp s).
 Proof.
     unfold Persistent.
-Abort.
-
-(* `{logrelSig Σ} (s : gset loc)
-Definition state_interp `{logrelSig Σ} (s : gset loc) : iProp Σ :=
-    own name_set s. *)
+Abort. *)
 
 Global Instance OSum_irisGS `{logrelSig Σ} : irisGS OSum_lang Σ := {
     iris_invGS := invariants;
@@ -60,7 +45,7 @@ Section lang_rules.
         A Logical Approach to Type Soundndess 
         
 
-        Where this stuff comes into play is using rules like
+        Where PureExec stuff comes into play is using rules like
             wp_pure_step_later    
             the obligations can be automatically dispatched 
                 by adding the following hints to the database
@@ -180,75 +165,4 @@ Section lang_rules.
          repeat (try split ; try reflexivity).
     Qed.
 
-
-
-(* 
-
-    Print gname.
-    Check decode (_ : gname).
-    Definition gnamToLoc (g : gname) : option loc := decode g.
-    Eval simpl in gnamToLoc (2%n).
-    Definition foo (l : gname) : gname -> Prop := fun x => x = l.
-    Lemma fooI (l : gname) : pred_infinite (foo l).
-    Proof.saved_pred_alloc_cofinite
-        unfold pred_infinite.
-        intros.
-    Check saved_pred_alloc.
-    Check saved_pred_alloc_strong .
-
-    Check gset_disj_alloc_updateP'.
-    Check own_update. *)
-
-(*     Lemma test (g : gname)(s : gset loc): own g s ⊢ |={⊤}=> own g s.
-    Proof.
-        iIntros "H".
-        assert (s ~~> s).
-        - done.
-        -
-        Check own_update.
-        Fail iMod (own_update $! H0).
-        Abort. *)
-
-(* https://plv.mpi-sws.org/coqdoc/iris/iris.heap_lang.locations.html#Loc.fresh *)
-(*   Definition fresh (ls : gset loc) : loc :=
-    {| loc_car := set_fold (λ k r, (1 + loc_car k) `max` r) 1 ls |}.
-
-  Lemma fresh_fresh ls i : 0 ≤ i → fresh ls +ₗ i ∉ ls.
-  Proof.
-    intros Hi. cut (∀ l, l ∈ ls → loc_car l < loc_car (fresh ls) + i).
-    { intros help Hf%help. simpl in ×. lia. }
-    apply (set_fold_ind_L (λ r ls, ∀ l, l ∈ ls → (loc_car l < r + i)));
-      set_solver by eauto with lia.
-  Qed. *)
-
-  (* vs 
-    stdpp.base.fresh
-   *)
-
-   Lemma fancyToBasic (P : iProp Σ ) : ⊢ (|==> P -∗ |={⊤}=> P)%I.
-   Proof.
-    iIntros.
-    iModIntro.
-    iIntros "HP".
-    iModIntro. 
-    iApply "HP".
-    Qed.
-
-(*     Lemma sub (s s' : state)(upd : s ~~> s') : own name_set s ⊢ |={⊤}=> own name_set s'.
-    Proof.
-        iIntros "H". 
-        iMod (own_update name_set s s' upd with "H") as "H'".
-        iModIntro. done.
-    Qed.
-(* WP (Case l).[env_subst gamma] {{ v, ⟦ TCase τ ⟧ rho v }}
- *)
-
- *)
-
-
 End lang_rules.
-
-
-
-
-

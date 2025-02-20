@@ -18,7 +18,8 @@ match vs with
 | v :: vs' => (of_val v) .: env_subst vs'
 end.
 
-Check interp_env.
+
+(* definition of semantic typing *)
 Definition log_typed `{logrelSig Σ} (Γ : list type) (e : expr) (τ : type) : iProp Σ :=
     (□ ∀ rho (vs : list val), ⟦ Γ ⟧* rho vs -∗ ⟦ τ ⟧ₑ rho e.[env_subst vs])%I.
 
@@ -78,28 +79,6 @@ Module fund.
         erewrite env_subst_lookup; eauto.
         iApply wp_value; done.
     Qed.
-
-(*     Lemma sem_typed_case Γ l x τ :
-          Γ !! x = Some (TCase τ) → ⊢ Γ ⊨ Case l : TCase τ.
-    Proof.
-        iIntros (asm rho gamma) "!# #HG".
-        (* case is a value *)
-        iApply wp_value.
-        Check interp_env_Some_l.
-        iDestruct (interp_env_Some_l with "HG") as (v) "[% H]"; first done.
-        iDestruct ("H") as "[%l' [%l''   d]]".
-
-        iDestruct ("H") as "[%l' %l'' (H1 & H2)]".
-        iExists l.
-        iSplit. iPureIntro. reflexivity.
-        (* The assumption for this lemma is not strong enough...
-            would have to modify interp_env_Some_l
-            
-            Should we really have this rule anyway? It is for typing dynamic expressions.
-         *)
-       Abort. *)
-
-
 
     Lemma sem_typed_unit Γ : ⊢ Γ ⊨ Unit : TUnit.
     Proof.
@@ -235,9 +214,6 @@ Module fund.
         iModIntro. iIntros. iApply wp_value. iApply "interp_v2".
     Qed.
 
-
-    (* Do arrow and then try OSum related ones *)
-
     Lemma sem_typed_lam Γ e τ1 τ2 : τ1 :: Γ ⊨ e : τ2 -∗ Γ ⊨ Lam e : TArrow τ1 τ2.
     Proof.
         iIntros "#HP" (rho gamma) "!# #HG". 
@@ -317,16 +293,16 @@ Module fund.
         iIntros (w) "?". by iApply interp_subst.
     Qed.
 
- Lemma sem_typed_letin Γ e1 e2 τ1 τ2 : Γ ⊨ e1 : τ1 -∗ τ1 :: Γ ⊨ e2 : τ2 -∗ Γ ⊨ LetIn e1 e2: τ2.
-  Proof.
-    iIntros "#IH1 #IH2" (Δ vs) "!# #HΓ"; simpl.
-    iApply (interp_expr_bind [LetInCtx _]); first by iApply "IH1".
-    iIntros (v) "#Hv /=".
-    iDestruct (interp_env_length with "HΓ") as %?.
-    iApply wp_pure_step_later; auto 1 using to_of_val. iIntros "!> _".
-    asimpl. iApply ("IH2" $! Δ (v :: vs)).
-    iApply interp_env_cons; iSplit; eauto.
-  Qed.
+    Lemma sem_typed_letin Γ e1 e2 τ1 τ2 : Γ ⊨ e1 : τ1 -∗ τ1 :: Γ ⊨ e2 : τ2 -∗ Γ ⊨ LetIn e1 e2: τ2.
+    Proof.
+        iIntros "#IH1 #IH2" (Δ vs) "!# #HΓ"; simpl.
+        iApply (interp_expr_bind [LetInCtx _]); first by iApply "IH1".
+        iIntros (v) "#Hv /=".
+        iDestruct (interp_env_length with "HΓ") as %?.
+        iApply wp_pure_step_later; auto 1 using to_of_val. iIntros "!> _".
+        asimpl. iApply ("IH2" $! Δ (v :: vs)).
+        iApply interp_env_cons; iSplit; eauto.
+    Qed.
 
     (* something off with existentials, check these. *)
     Lemma sem_typed_pack Γ e τ τ' : Γ ⊨ e : τ.[τ'/] -∗ Γ ⊨ Pack e : TExist τ.
@@ -361,10 +337,8 @@ Module fund.
 
     (* ------------- NEW stuff ------------------------ *)
 
-(*     Local Notation "l ↦□ v" := (logrel.pointsto_def l v)
-    (at level 20,  format "l ↦□ v") : bi_scope. *)
-     Local Notation "l @ l' ↦□ v" := (logrel.pointsto_def l l' v)
-        (at level 20,  format "l @ l' ↦□ v") : bi_scope. 
+    Local Notation "l @ l' ↦□ v" := (logrel.pointsto_def l l' v)
+    (at level 20,  format "l @ l' ↦□ v") : bi_scope. 
 
     Lemma sem_typed_osum Γ e1 e2 τ :
         Γ ⊨ e1 : (TCase τ) -∗
@@ -384,8 +358,7 @@ Module fund.
         (* expressions reduced, apply wp_value *)
         iApply wp_value.
         (* We have that v1 is a case of τ, so extract that information. *)
-        iDestruct "HV1" as "[%l (%l' & %case & #typ)]"; fold interp.
-        subst.
+        iDestruct "HV1" as "[%l (%l' & %case & #typ)]"; fold interp ; subst.
         (* Now interpret OSum *)
         iExists l. iExists l'. iExists v2. iExists (interp τ rho).
         iSplit.
@@ -393,22 +366,14 @@ Module fund.
         iSplit. iApply "typ".
         iApply "HV2".
     Qed.
-    Check logrel.pointsto_def.
-
 
     Lemma points_to_agree l l' l'' P P' x : l'' @ l' ↦□P -∗ l @ l' ↦□ P' -∗ ▷ (P x ≡ P' x).
     Proof.
         iIntros "(_ & Q) (_ & Q')".
         iApply (saved_pred_agree with "Q Q'").
     Qed. 
-(* 
-    Lemma points_to_agree l l' P P' x : l @ l' ↦□P -∗ l @ l' ↦□ P' -∗ ▷ (P x ≡ P' x).
-    Proof.
-        iIntros "[%l d]".
-        iIntros "#[%a [%b (_ & Q)]] #[%c [%d (_ & Q')]]".
-        iApply (saved_pred_agree with "Q Q'").
-    Qed.  *)
 
+    (* hack and slash, clean this *)
     Lemma loc_agree_L l1 l2 l3 P P'  : l1 @ l2 ↦□P -∗ l3 @ l2 ↦□ P' -∗ ⌜l1 = l3⌝.
     Proof.
          iIntros "(B1 & _) (B2 & _)".
@@ -465,28 +430,27 @@ Module fund.
         subst.
         fold interp.
         (* have
-            prf1 : l↦□P
-            prf2 : l'↦□⟦ τ1 ⟧ rho
+            prf1 : l1@l2↦□P
+            prf2 : l3@l4↦□⟦ τ1 ⟧ rho
             typ : P osumVal
 
-            in the case that l and l' are equal...
+            in the case that l1 and l3 are equal...
             then P should be equal to interp t1 rho..
         *)
         destruct (decide (l1 = l3)) as [|Hneq]. subst.
         {
-            (*      l'↦□P 
+            (*      l3@l4↦□P
                 AND 
-                    l'↦□⟦ τ1 ⟧ rho 
+                    l3@l4↦□⟦ τ1 ⟧ rho
                 IMPLIES
                     ▷ (P osumVal ≡ ⟦ τ1 ⟧ rho osumVal) *)
             Check points_to_agree.
             iPoseProof (loc_agree_R with "prf1 prf2") as "%eqd"; subst.
             iPoseProof (points_to_agree _ _ _ _ _ osumVal with "prf1 prf2") as "prf".
             (* Now we can take a base step, CaseOfTrue  *)
-            iApply wp_pure_step_later ; try done. 
+            iApply wp_pure_step_later ; try done ; fold of_val.
             (* handle the later modality in goal and hypotheis *)
             iIntros "!> _". 
-            fold of_val.
             (* simplify substitutions using autosubst  *)
             asimpl.
             (* now we can use our hypothesis about e3 *)
@@ -501,11 +465,14 @@ Module fund.
             iRewrite -"prf".
             iApply "typ".
         }
+        (* here the cases in the match are not equal, goes to default case *)
         iApply wp_pure_step_later.
+        (* need to fix the pure exec instance to clean this up *)
         {
             apply wp_case_nomatch . - unfold AsVal. exists osumVal. reflexivity.
             - exact Hneq.
         } eauto.  iIntros "!> _".
+        (* just apply the default case we got via intros *)
         iApply "H4".
     Qed.
 
@@ -520,46 +487,69 @@ Module fund.
     Proof.
         iApply wp_lift_atomic_base_step_no_fork; auto.
         iIntros (s1 n k1 k2 n') "[%L (A & #B)]".
-                    (* get access to the state interpretation *)
+        (* get access to the state interpretation *)
         unfold weakestpre.state_interp; simpl; unfold state_interp.
         (* handle the fact that New is reducible first *)
         iModIntro. iSplit.
         - iPureIntro; unfold base_reducible; repeat eexists; eapply NewS.
-        (* only obligation is that we need to be able to summon a fresh name *)
-(*         exact (is_fresh s1).
- *)        - (* now we need to handle the state update, 
+        (* now we need to handle the state update, 
             first bring variables into scope  *)
-        iModIntro. iIntros (e2 s2 efs baseStep) "lc".
+        -
+        iModIntro; iIntros (e2 s2 efs baseStep) "lc".
         (* inversion on the base step *)
-        inversion baseStep. subst ; simpl.
+        inversion baseStep; subst ; simpl.
+        (* here we allocate a new predicate representing the typing of t *)
         iMod (saved_pred_alloc_cofinite L (interp t rho) DfracDiscarded) as "[%l (%lfresh & typ)]"; try done.
-
+        (* Now we just have to show that the state interpretation is preserved
+          and that we have a location pointing to a predicate representing typing of t
+            which we just allocated *)
+        (* no forks *)
         iApply fupd_frame_l; iSplit ; try done.
+        (* prove the WP post condition with "typ" *)
         iApply fupd_frame_r. iSplit. 2: { iExists l; iApply "typ". }
+        (* Trickier part, showing that the state interpretation is preserved
+            here we have to update our bijection of fresh names
+            we have two new names "fresh s1" and "l"
+            and we need to update the saved predicate map wit our newly allocated predicate
+         *)
         iExists (L ∪ {[l]}).
+        (* update the saved predicate map *)
         iApply fupd_frame_r. iSplit. 2: {
             iApply big_opS_union.
             - set_solver.
             - iSplit. {iApply "B". }
             iApply big_opS_singleton . iExists (interp t rho). iApply "typ".
         }
+        (* show update the name bijection.
+            Note: this seems to be a newer camera in Iris and is missing some useful lemmas
+            Clean this up and add to their library
+         *)
+        (* first step, show that "(fresh s1, l)" is a new element of (gset_cprod s1 L) *)
         assert (∀ b' : gname, (fresh s1, b') ∉ (gset_cprod s1 L)). {
             intros. rewrite elem_of_gset_cprod. unfold not. intros. destruct H0. simpl in H0.
             pose proof (is_fresh s1). contradiction.
         } 
         assert (∀ a' : loc, (a', l) ∉ (gset_cprod s1 L)). {
             intros. rewrite elem_of_gset_cprod. unfold not. intros. destruct H1. simpl in H2. contradiction. 
-        } 
+        }
+        (* now we can derive a valid update ~~> *) 
         pose proof (gset_bij_auth_extend (fresh s1)l H0 H1).
+        (* The update is for a set that is obviously equal.. but we have to prove this *)
         assert ({[(fresh s1, l)]} ∪ gset_cprod s1 L = gset_cprod (s1 ∪ {[fresh s1]}) (L ∪ {[l]})). {
           (* obvious, but annoying to prove  *) admit.
           (*   apply set_eq. apply elem_of_gset_cprod *) }
-        rewrite H3 in H2. 
+        (* fix the update target with the correct set *)
+        rewrite H3 in H2.
+        (* Finally.. with the update in hand, we can update the cell "new_set" *) 
         iMod (own_update name_set _ _ H2 with "A") as "goal".
-        iModIntro. iApply "goal".
+        done.
+        (* proof is finished modulo dumb proof that two obviously equal sets are equal *)
     Admitted.
 
-    (* This is the version that we should use *)
+    (* Need to enhance the WP of new to prove semantic typing
+        specifically we need to surface the fact that there is a bijection on locations 
+        and the case returned by New is in bijection with a new predicate
+     *)
     Lemma wp_new' t rho : 
         ⊢ WP (New t) {{ v,∃ l l', l @ l' ↦□(interp t rho) ∗ ⌜v = CaseV l⌝}}.
     Proof.
@@ -582,10 +572,14 @@ Module fund.
         iApply fupd_frame_l; iSplit ; try done.
         iApply fupd_frame_l; iSplitL "A".
         (* ah, the view camera for the bijection is a bit more annoying
-            need to be careful how those resources are split *)
+            need to be careful how those resources are split 
+        
+            Should be doable.. just more annoying
+            *)
          Admitted.
 
 
+    (* with the weakes precondition in hand, this is easy *)
     Lemma sem_typed_new Γ t :
         ⊢  Γ ⊨ (New t) : TCase t.
     Proof.
@@ -599,9 +593,11 @@ Module fund.
         - iApply "B".
     Qed.
 
+    (* by induction on syntactic typing  *)
     Theorem fundamental Γ e τ : Γ ⊢ₜ e : τ → ⊢ Γ ⊨ e : τ.
     Proof.
-        induction 1.
+        intros synTyp.
+        induction synTyp.
         - iApply sem_typed_var; done.
         - iApply sem_typed_unit; done.
         - iApply sem_typed_int; done.
@@ -611,12 +607,12 @@ Module fund.
         - iApply sem_typed_pair; done.
         - iApply sem_typed_fst; done.
         - iApply sem_typed_snd; done.
-        - iApply sem_typed_letin; done.
         - iApply sem_typed_osum; done.
         - iApply sem_typed_caseOf; done.
         - iApply sem_typed_new; done.
         - admit. (* sem_typed_if *)
         - iApply sem_typed_lam; done.
+        - iApply sem_typed_letin; done.
         - iApply sem_typed_app; done.
         - iApply sem_typed_tlam; done.
         - iApply sem_typed_tapp; done.

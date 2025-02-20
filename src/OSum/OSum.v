@@ -47,7 +47,6 @@ Global Instance SubstLemmas_typer : SubstLemmas type. derive. Qed.
   | App (e1 e2 : expr)
   | Lam (e : {bind expr})
   | LetIn (e1 : expr) (e2 : {bind expr}) 
-   (* | Seq (e1 e2 : expr)*)
   (* Base Types *)
   | Unit
   | Int (n : Z)
@@ -61,11 +60,7 @@ Global Instance SubstLemmas_typer : SubstLemmas type. derive. Qed.
   | Snd (e : expr)
   (* OSum *)
   | New (t : type) 
-(*   | New (t : type) (e1 : expr) (e2 : {bind expr})
- *)(*    similar to TLam hiding types, do so here 
-(*  *)  | New (t : type) (e : {bind expr})
- *)(*   | New (e : {bind expr})
- *)  | Case (l : loc)
+  | Case (l : loc)
   | Inj (sigma : expr )(e : expr)
   | CaseOf (d : expr) (i : expr) (e1 : {bind expr}) (e2 : expr)
   (* Polymorphic Types *)
@@ -80,16 +75,12 @@ Global Instance SubstLemmas_typer : SubstLemmas type. derive. Qed.
   Global Instance Subst_expr : Subst expr. derive. Defined.
   Global Instance SubstLemmas_expr : SubstLemmas expr. derive. Qed.
 
-Locate positive.
-
-
 Definition binop_res_type (op : binop) : type :=
   match op with
   | Add => TInt | Sub => TInt | Mult => TInt
   | Eq => TBool | Le => TBool | Lt => TBool
   end.
 
-(* what is this ?*)
 Inductive EqType : type → Prop :=
   | EqTUnit : EqType TUnit
   | EqTNat : EqType TInt
@@ -100,14 +91,10 @@ Reserved Notation "Γ ⊢ₜ e : τ" (at level 74, e, τ at next level).
   Notation "#♭ b" := (Bool b) (at level 20).
   Notation "#n n" := (Int n) (at level 20).
 
-Check decode_nat.
 (* note that gamma here is really a type environment *)
 Inductive typed (Γ : list type) : expr → type → Prop :=
   | Var_typed x τ : Γ !! x = Some τ → Γ ⊢ₜ Var x : τ
 
-  (* either this, or make the typing judgement depend on state *)
-(*   | Case_typed x t : Γ !! (encode_nat x) = Some (TCase t) -> Γ ⊢ₜ Case x : TCase t
- *)
   | Unit_typed : Γ ⊢ₜ Unit : TUnit
   | Int_typed n : Γ ⊢ₜ #n n : TInt
   | Bool_typed b : Γ ⊢ₜ #♭ b : TBool
@@ -127,9 +114,6 @@ Inductive typed (Γ : list type) : expr → type → Prop :=
   | Fst_typed e τ1 τ2 : Γ ⊢ₜ e : TProd τ1 τ2 → Γ ⊢ₜ Fst e : τ1
   | Snd_typed e τ1 τ2 : Γ ⊢ₜ e : TProd τ1 τ2 → Γ ⊢ₜ Snd e : τ2
   (* OSum *)
-  | LetIn_typed e1 e2 τ1 τ2 :
-    Γ ⊢ₜ e1 : τ1 → τ1 :: Γ ⊢ₜ e2 : τ2 → Γ ⊢ₜ LetIn e1 e2 : τ2
- 
   | Inj_typed e1 e2 t1  : 
     Γ ⊢ₜ e1 : TCase t1 → 
     Γ ⊢ₜ e2 : t1 → 
@@ -141,31 +125,20 @@ Inductive typed (Γ : list type) : expr → type → Prop :=
     Γ ⊢ₜ e4 : t2 ->
     Γ ⊢ₜ CaseOf e1 e2 e3 e4 : t2
 
-
-   | New_typed t :  Γ ⊢ₜ (New t) : TCase t
-     (* hmm *)
-(*   | New_typed e1 t1 t2 :
-    (TCase t1) :: Γ ⊢ₜ e1 : t2  ->
-(*     Γ ⊢ₜ e1 : TCase t1 ->
- *)    Γ ⊢ₜ New t1 e1 : t2
-(*    New_typed e t :
-    (TCase t1) :: Γ ⊢ₜ e1 : t  ->
-    Γ ⊢ₜ New e : t  *) *)
+  | New_typed t :  Γ ⊢ₜ (New t) : TCase t
 
   | If_typed e0 e1 e2 τ :
      Γ ⊢ₜ e0 : TBool → Γ ⊢ₜ e1 : τ → Γ ⊢ₜ e2 : τ → Γ ⊢ₜ If e0 e1 e2 : τ
   | Lam_typed e τ1 τ2 :
       τ1 :: Γ ⊢ₜ e : τ2 → 
       Γ ⊢ₜ Lam e : TArrow τ1 τ2
- (* | LetIn_typed e1 e2 τ1 τ2 :
-      Γ ⊢ₜ e1 : τ1 → τ1 :: Γ ⊢ₜ e2 : τ2 → Γ ⊢ₜ LetIn e1 e2 : τ2
-  | Seq_typed e1 e2 τ1 τ2 :
-      Γ ⊢ₜ e1 : τ1 → Γ ⊢ₜ e2 : τ2 → Γ ⊢ₜ Seq e1 e2 : τ2*)
+
+  | LetIn_typed e1 e2 τ1 τ2 :
+    Γ ⊢ₜ e1 : τ1 → τ1 :: Γ ⊢ₜ e2 : τ2 → Γ ⊢ₜ LetIn e1 e2 : τ2
+
   | App_typed e1 e2 τ1 τ2 :
      Γ ⊢ₜ e1 : TArrow τ1 τ2 → Γ ⊢ₜ e2 : τ1 → Γ ⊢ₜ App e1 e2 : τ2
-  (* Here are the interesting cases ..
-     autosubst is used again .. which wtf..how?
-  *)
+
   | TLam_typed e τ :
      subst (ren (+1)) <$> Γ ⊢ₜ e : τ → 
      Γ ⊢ₜ TLam e : TForall τ
@@ -181,14 +154,7 @@ Inductive typed (Γ : list type) : expr → type → Prop :=
      Γ ⊢ₜ UnpackIn e1 e2 : τ'
 where "Γ ⊢ₜ e : τ" := (typed Γ e τ).
 
-(* Example lam : [] ⊢ₜ Lam (Var 0) : TArrow TBool TBool.
-Proof.
-  apply Lam_typed.
-  apply Var_typed.
-  simplify_option_eq.
-  reflexivity.
-Qed.
-
+(*
 Example bad : expr := 
   New 
     (TArrow TOSum TOSum)
@@ -234,78 +200,6 @@ Proof.
   - eapply Var_typed. reflexivity.
   - eapply Var_typed. reflexivity.
 Qed.
-
-
- *)
-(* removing case rule
-Example test : [] ⊢ₜ New TBool (New TInt (Inj (Case 1) (Bool true))) : TOSum.
-Proof.
-  eapply New_typed.
-  eapply New_typed.
-  eapply Inj_typed.
-  - eapply Case_typed. reflexivity. 
-  - apply Bool_typed.
-Qed.
-*)
-
-(*
-(* here we loose the binding of the original case *)
-Example fail : []  ⊢ₜ LetIn (New TBool (Bool true)) (New TInt (Inj (Case 0) (Bool false))) : TOSum.
-Proof.
-  eapply LetIn_typed.
-  - eapply New_typed.
-    apply Bool_typed.
-  - eapply New_typed.
-  eapply Inj_typed.
-  * eapply Case_typed. reflexivity.
-  * Admitted.
-
-Example test1 : [] ⊢ₜ 
-  (New TBool (New TInt 
-    (CaseOf
-      (Inj (Case 1) (Bool true))
-      (Case 1)
-      (Var 0)
-      (Bool false)
-  ))) : TBool.
-Proof.
-  eapply New_typed.
-  eapply New_typed.
-  eapply CaseOf_typed.
-  - eapply Inj_typed.
-    * eapply Case_typed. reflexivity. 
-    * eapply Bool_typed.
-  - eapply Case_typed. reflexivity.
-  - eapply Var_typed. reflexivity.
-  - eapply Bool_typed.
-Qed.
-
-(* universal injection*)
-
-(* forall X, X -> OSum*)
-Example ptype : type :=
-  TForall (TArrow (TVar 0) TOSum).
-
-Example prog : expr := 
-  TLam
-    (Lam 
-      (New 
-        (TVar 0)
-        (Inj (Var 0) (Var 1))
-      )
-    ).
-
-
-Example test2 : [] ⊢ₜ prog : ptype.
-Proof.
-  eapply TLam_typed.
-  simpl.
-  eapply Lam_typed.
-  eapply New_typed.
-  eapply Inj_typed.
-  - eapply Var_typed. reflexivity.
-  - eapply Var_typed. reflexivity.
-Qed.
 *)
 
   Global Instance expr_dec_eq (e e' : expr) : Decision (e = e').
@@ -322,7 +216,7 @@ Qed.
   | InjV (v1 : val) (v2 : val)
   | CaseV (l : loc).
 
-  (* Notation for bool and nat *)
+  (* Notation for bool and int *)
   Notation "'#♭v' b" := (BoolV b) (at level 20).
   Notation "'#nv' n" := (IntV n) (at level 20).
 
@@ -385,7 +279,6 @@ Qed.
   | AppLCtx (e2 : expr)
   | AppRCtx (v1 : val)
   | LetInCtx (e2 : expr) 
-   (*| SeqCtx (e2 : expr)*)
   | TAppCtx
   | PackCtx
   | UnpackInCtx (e2 : expr)
@@ -395,25 +288,17 @@ Qed.
   | BinOpRCtx (op : binop) (v1 : val)
   | FstCtx
   | SndCtx
- (*   | NewCtx (t : type) (* maybe ? lets just reduce under new for now*)
- *)  | InjLCtx (e2 : expr)
+  | InjLCtx (e2 : expr)
   | InjRCtx (v1 : val)
   | CaseOfCtxOSUM (e2 : expr) (e3 : {bind expr}) (e4 : expr)
   | CaseOfCtxInj (v1 : val) (e3 : {bind expr}) (e4 : expr)
   | IfCtx (e1 : {bind expr}) (e2 : {bind expr}).
 
-(* In all sensible instances, comp_ectx K' empty_ectx will be the same as K', 
-https://plv.mpi-sws.org/coqdoc/iris/iris.program_logic.ectx_language.html#not_base_reducible
-
- *)
-(*   Definition comp_ectx : ectx → ectx → ectx.
- *)
   Definition fill_item (Ki : ectx_item) (e : expr) : expr :=
     match Ki with
     | AppLCtx e2 => App e e2
     | AppRCtx v1 => App (of_val v1) e
     | LetInCtx e2 => LetIn e e2
-     (*| SeqCtx e2 => Seq e e2*)
     | TAppCtx => TApp e
     | PackCtx => Pack e
     | UnpackInCtx e2 => UnpackIn e e2
@@ -423,31 +308,24 @@ https://plv.mpi-sws.org/coqdoc/iris/iris.program_logic.ectx_language.html#not_ba
     | BinOpRCtx op v1 => BinOp op (of_val v1) e
     | FstCtx => Fst e
     | SndCtx => Snd e
- (*     | NewCtx t => New t e
- *)    | InjLCtx e2 => Inj e e2
+    | InjLCtx e2 => Inj e e2
     | InjRCtx v1 => Inj (of_val v1) e
     | CaseOfCtxOSUM e2 e3 e4 => CaseOf e e2 e3 e4 
     | CaseOfCtxInj v1 e3 e4 => CaseOf (of_val v1) e e3 e4
     | IfCtx e1 e2 => If e e1 e2
     end.
 
+  Definition state : Type := gset loc.
 
-  Check gset.
-(*   Definition state : Type := gmap loc type.
- *)
- Definition state : Type := gset loc.
-
-(* Note that all of these rules effectivly ignore the  3rd and 6th arguements
-So really base_step : expr , state -> expr , state -> Prop
-this makes sense for SystemF with store
-*)
-Check up Var.
-Eval simpl in (Var 0).[Var 1/].
   Inductive base_step : expr → state → list Empty_set → expr → state → list expr → Prop :=
   (* Lam-β *)
   | LamBetaS e1 e2 v2 σ :
       to_val e2 = Some v2 →
       base_step (App (Lam e1) e2) σ [] e1.[e2/] σ []
+
+  | LetInBetaS e1 e2 v2 σ :
+    to_val e1 = Some v2 →
+    base_step (LetIn e1 e2) σ [] e2.[e1/] σ []
 
   (* Polymorphic Types *)
   (* no type substitution ..? just returns the body of the lambda?*)
@@ -465,7 +343,7 @@ Eval simpl in (Var 0).[Var 1/].
       to_val e1 = Some v1 → to_val e2 = Some v2 →
       base_step (Snd (Pair e1 e2)) σ [] e2 σ []
 
-  (* nat bin op *)
+  (* bin op *)
   | BinOpS op a av b bv rv σ :
       to_val a = Some av →
       to_val b = Some bv →
@@ -491,34 +369,9 @@ Eval simpl in (Var 0).[Var 1/].
     base_step 
         (CaseOf (Inj (Case l) e1) (Case l') e3 e4) σ [] 
         e4 σ []
-  
- | LetInBetaS e1 e2 v2 σ :
-      to_val e1 = Some v2 →
-      base_step (LetIn e1 e2) σ [] e2.[e1/] σ []
- 
 
   | NewS t s :    
-      base_step (New t) s [] (Case (fresh s)) (s ∪ {[fresh s]}) [].
-
-(*   | NewS t e  v l s : 
-      to_val (e.[(of_val (CaseV l))/]) = Some v -> 
-      ¬ l ∈ s ->
-      base_step (New t (e.[(of_val (CaseV l))/])) s [] (e.[(of_val (CaseV l))/]) (s ∪ {[l]}) []. *)
-
-(*   | LamBetaS e1 e2 v2 σ :
-      to_val e2 = Some v2 →
-      base_step (App (Lam e1) e2) σ [] e1.[e2/] σ [] *)
-  (* State update *)
-(*   | NewS t e e' v l s : 
-    to_val e = Some v -> 
-    e = e'.[(of_val (CaseV l))/] ->
-     ¬ l ∈ s ->
-    base_step (New t e) s [] e (s ∪ {[l]}) []. *)
-
-(*   | NewS t e1 v1 σ l :
-    to_val e1 = Some v1 → σ !! l = None →
-    base_step (New t e1) σ [] e1 (<[l:=t]>σ) []. *)
-
+    base_step (New t) s [] (Case (fresh s)) (s ∪ {[fresh s]}) [].
 
 
   (** Basic properties about the language *)
