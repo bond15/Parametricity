@@ -1,8 +1,8 @@
-From stdpp Require Import base gmap coPset tactics proof_irrel.
+From stdpp Require Import base gmap coPset tactics proof_irrel sets.
 
 From iris.base_logic Require Import invariants iprop upred saved_prop gen_heap.
 From iris.base_logic.lib Require Import ghost_map.
-From iris.algebra Require Import cofe_solver gset gmap_view excl.
+From iris.algebra Require Import cofe_solver gset gmap_view excl gset_bij.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import weakestpre ectx_lifting.
 Require Import Autosubst.Autosubst.
@@ -79,7 +79,7 @@ Module fund.
         iApply wp_value; done.
     Qed.
 
-    Lemma sem_typed_case Γ l x τ :
+(*     Lemma sem_typed_case Γ l x τ :
           Γ !! x = Some (TCase τ) → ⊢ Γ ⊨ Case l : TCase τ.
     Proof.
         iIntros (asm rho gamma) "!# #HG".
@@ -87,8 +87,9 @@ Module fund.
         iApply wp_value.
         Check interp_env_Some_l.
         iDestruct (interp_env_Some_l with "HG") as (v) "[% H]"; first done.
+        iDestruct ("H") as "[%l' [%l''   d]]".
 
-        iDestruct ("H") as "[%l' (H1 & H2)]".
+        iDestruct ("H") as "[%l' %l'' (H1 & H2)]".
         iExists l.
         iSplit. iPureIntro. reflexivity.
         (* The assumption for this lemma is not strong enough...
@@ -96,7 +97,7 @@ Module fund.
             
             Should we really have this rule anyway? It is for typing dynamic expressions.
          *)
-       Abort.
+       Abort. *)
 
 
 
@@ -288,8 +289,40 @@ Module fund.
         iApply "HV'".
     Qed.
 
-    Local Notation "l ↦□ v" := (logrel.pointsto_def l v)
-    (at level 20,  format "l ↦□ v") : bi_scope.
+    Import uPred.
+
+    Lemma interp_env_ren Δ (Γ : list type) (vs : list val) τi :
+        ⟦ subst (ren (+1)) <$> Γ ⟧* (τi :: Δ) vs ⊣⊢ ⟦ Γ ⟧* Δ vs.
+    Proof.
+        apply sep_proper; [apply pure_proper; by rewrite length_fmap|].
+        revert Δ vs τi; induction Γ=> Δ [|v vs] τi; csimpl; auto.
+        apply sep_proper; auto. rewrite (interp_weaken [] [τi] Δ). eauto.
+    Qed.
+
+    Lemma sem_typed_tlam Γ e τ : (subst (ren (+1)) <$> Γ) ⊨ e : τ -∗ Γ ⊨ TLam e : TForall τ.
+    Proof.
+        iIntros "#IH" (Δ vs) "!# #HΓ /=".
+        iApply wp_value; simpl.
+        iModIntro; iIntros (τi). iApply wp_pure_step_later; auto. iIntros "!> _".
+        iApply "IH". by iApply interp_env_ren.
+    Qed.
+
+    Lemma sem_typed_tapp Γ e τ τ' : Γ ⊨ e : TForall τ -∗ Γ ⊨ TApp e : τ.[τ'/].
+    Proof.
+        iIntros "#IH" (Δ vs) "!# #HΓ /=".
+        iApply (interp_expr_bind [TAppCtx]); first by iApply "IH".
+        iIntros (v) "#Hv /=". fold interp.
+        iApply wp_wand_r; iSplitL;
+        [iApply ("Hv" $! (⟦ τ' ⟧ Δ)); iPureIntro; apply _|]; cbn.
+        iIntros (w) "?". by iApply interp_subst.
+    Qed.
+
+
+
+(*     Local Notation "l ↦□ v" := (logrel.pointsto_def l v)
+    (at level 20,  format "l ↦□ v") : bi_scope. *)
+     Local Notation "l @ l' ↦□ v" := (logrel.pointsto_def l l' v)
+        (at level 20,  format "l @ l' ↦□ v") : bi_scope. 
 
     Lemma sem_typed_osum Γ e1 e2 τ :
         Γ ⊨ e1 : (TCase τ) -∗
@@ -309,23 +342,62 @@ Module fund.
         (* expressions reduced, apply wp_value *)
         iApply wp_value.
         (* We have that v1 is a case of τ, so extract that information. *)
-        iDestruct "HV1" as "[%l (%case & #typ)]"; fold interp.
+        iDestruct "HV1" as "[%l (%l' & %case & #typ)]"; fold interp.
         subst.
         (* Now interpret OSum *)
-        iExists l. iExists v2. iExists (interp τ rho).
+        iExists l. iExists l'. iExists v2. iExists (interp τ rho).
         iSplit.
         iPureIntro. done.
         iSplit. iApply "typ".
         iApply "HV2".
     Qed.
+    Check logrel.pointsto_def.
 
-    Lemma points_to_agree l  P P' x : l↦□P -∗ l ↦□ P' -∗ ▷ (P x ≡ P' x).
+
+    Lemma points_to_agree l l' l'' P P' x : l'' @ l' ↦□P -∗ l @ l' ↦□ P' -∗ ▷ (P x ≡ P' x).
     Proof.
-        iIntros "#[%s1 (_ & _ & Q)] #[%s2 (_ & _ & Q')]".
+        iIntros "(_ & Q) (_ & Q')".
         iApply (saved_pred_agree with "Q Q'").
+    Qed. 
+(* 
+    Lemma points_to_agree l l' P P' x : l @ l' ↦□P -∗ l @ l' ↦□ P' -∗ ▷ (P x ≡ P' x).
+    Proof.
+        iIntros "[%l d]".
+        iIntros "#[%a [%b (_ & Q)]] #[%c [%d (_ & Q')]]".
+        iApply (saved_pred_agree with "Q Q'").
+    Qed.  *)
+
+    Lemma loc_agree_L l1 l2 l3 P P'  : l1 @ l2 ↦□P -∗ l3 @ l2 ↦□ P' -∗ ⌜l1 = l3⌝.
+    Proof.
+         iIntros "(B1 & _) (B2 & _)".
+         Check  gset_bij_elem_agree.
+         Check own_op.
+         iStopProof.
+         iIntros "P".
+         iPoseProof (own_op name_set _ _ with "P")as "foo".
+         iPoseProof (own_valid with "foo") as "%bar".
+         apply gset_bij_elem_agree in bar.
+         destruct bar.
+         pose proof (H1 eq_refl).
+         iPureIntro. done.
     Qed.
-        
- 
+
+    Lemma loc_agree_R l1 l2 l3 P P'  : l1 @ l2 ↦□P -∗ l1 @ l3 ↦□ P' -∗ ⌜l2 = l3⌝.
+    Proof.
+         iIntros "(B1 & _) (B2 & _)".
+         Check  gset_bij_elem_agree.
+         Check own_op.
+         iStopProof.
+         iIntros "P".
+         iPoseProof (own_op name_set _ _ with "P")as "foo".
+         iPoseProof (own_valid with "foo") as "%bar".
+         apply gset_bij_elem_agree in bar.
+         destruct bar.
+         pose proof (H0 eq_refl).
+         iPureIntro. done.
+    Qed.
+
+
     Lemma sem_typed_caseOf  Γ e1 e2 e3 e4 τ1 τ2 : 
         Γ ⊨ e1 : TOSum -∗ (* thing to destruct *)
         Γ ⊨ e2 : TCase τ1  -∗ (* matching on case *)
@@ -346,8 +418,8 @@ Module fund.
         iIntros (v2) "#HV2".
         (* The values of OSum and Case both hold locations, 
             dispatch redution rules based on the decidable equality of locations *)
-        iDestruct "HV1" as "[%l [%osumVal [%P (%inj & #prf1 & #typ)]]]".
-        iDestruct "HV2" as "[%l' (%case & #prf2)]".
+        iDestruct "HV1" as "[%l1 [%l2 [%osumVal [%P (%inj & #prf1 & #typ)]]]]".
+        iDestruct "HV2" as "[%l3 [%l4 (%case & #prf2)]]".
         subst.
         fold interp.
         (* have
@@ -358,14 +430,16 @@ Module fund.
             in the case that l and l' are equal...
             then P should be equal to interp t1 rho..
         *)
-        destruct (decide (l = l')) as [|Hneq]. subst.
+        destruct (decide (l1 = l3)) as [|Hneq]. subst.
         {
             (*      l'↦□P 
                 AND 
                     l'↦□⟦ τ1 ⟧ rho 
                 IMPLIES
                     ▷ (P osumVal ≡ ⟦ τ1 ⟧ rho osumVal) *)
-            iPoseProof (points_to_agree _ _ _ osumVal with "prf1 prf2") as "prf".
+            Check points_to_agree.
+            iPoseProof (loc_agree_R with "prf1 prf2") as "%eqd"; subst.
+            iPoseProof (points_to_agree _ _ _ _ _ osumVal with "prf1 prf2") as "prf".
             (* Now we can take a base step, CaseOfTrue  *)
             iApply wp_pure_step_later ; try done. 
             (* handle the later modality in goal and hypotheis *)
@@ -392,6 +466,323 @@ Module fund.
         } eauto.  iIntros "!> _".
         iApply "H4".
     Qed.
+
+    Local Notation "l ↦ P" := (saved_pred_own l DfracDiscarded P)
+    (at level 20,  format "l ↦ P") : bi_scope.
+
+    (* proved, but not strong enough, 
+        need to mention the other location in bijection with l'
+        and that ⌜v = CaseV l⌝*)
+    Lemma wp_new t rho : 
+        ⊢ WP (New t) {{ v, ∃ l', l' ↦ (interp t rho)}}.
+    Proof.
+        iApply wp_lift_atomic_base_step_no_fork; auto.
+        iIntros (s1 n k1 k2 n') "[%L (A & #B)]".
+                    (* get access to the state interpretation *)
+        unfold weakestpre.state_interp; simpl; unfold state_interp.
+        (* handle the fact that New is reducible first *)
+        iModIntro. iSplit.
+        - iPureIntro; unfold base_reducible; repeat eexists; eapply NewS.
+        (* only obligation is that we need to be able to summon a fresh name *)
+(*         exact (is_fresh s1).
+ *)        - (* now we need to handle the state update, 
+            first bring variables into scope  *)
+        iModIntro. iIntros (e2 s2 efs baseStep) "lc".
+        (* inversion on the base step *)
+        inversion baseStep. subst ; simpl.
+        iMod (saved_pred_alloc_cofinite L (interp t rho) DfracDiscarded) as "[%l (%lfresh & typ)]"; try done.
+
+        iApply fupd_frame_l; iSplit ; try done.
+        iApply fupd_frame_r. iSplit. 2: { iExists l; iApply "typ". }
+        iExists (L ∪ {[l]}).
+        iApply fupd_frame_r. iSplit. 2: {
+            iApply big_opS_union.
+            - set_solver.
+            - iSplit. {iApply "B". }
+            iApply big_opS_singleton . iExists (interp t rho). iApply "typ".
+        }
+        assert (∀ b' : gname, (fresh s1, b') ∉ (gset_cprod s1 L)). {
+            intros. rewrite elem_of_gset_cprod. unfold not. intros. destruct H0. simpl in H0.
+            pose proof (is_fresh s1). contradiction.
+        } 
+        assert (∀ a' : loc, (a', l) ∉ (gset_cprod s1 L)). {
+            intros. rewrite elem_of_gset_cprod. unfold not. intros. destruct H1. simpl in H2. contradiction. 
+        } 
+        pose proof (gset_bij_auth_extend (fresh s1)l H0 H1).
+        assert ({[(fresh s1, l)]} ∪ gset_cprod s1 L = gset_cprod (s1 ∪ {[fresh s1]}) (L ∪ {[l]})). {
+          (* obvious, but annoying to prove  *) admit.
+          (*   apply set_eq. apply elem_of_gset_cprod *) }
+        rewrite H3 in H2. 
+        iMod (own_update name_set _ _ H2 with "A") as "goal".
+        iModIntro. iApply "goal".
+    Admitted.
+
+    (* This is the version that we should use *)
+    Lemma wp_new' t rho : 
+        ⊢ WP (New t) {{ v,∃ l l', l @ l' ↦□(interp t rho) ∗ ⌜v = CaseV l⌝}}.
+    Proof.
+        iApply wp_lift_atomic_base_step_no_fork; auto.
+        iIntros (s1 n k1 k2 n') "[%L (A & #B)]".
+                    (* get access to the state interpretation *)
+        unfold weakestpre.state_interp; simpl; unfold state_interp.
+        (* handle the fact that New is reducible first *)
+        iModIntro. iSplit.
+        - iPureIntro; unfold base_reducible; repeat eexists; eapply NewS.
+        (* only obligation is that we need to be able to summon a fresh name *)
+(*         exact (is_fresh s1).
+ *)        - (* now we need to handle the state update, 
+            first bring variables into scope  *)
+        iModIntro. iIntros (e2 s2 efs baseStep) "lc".
+        (* inversion on the base step *)
+        inversion baseStep. subst ; simpl.
+        iMod (saved_pred_alloc_cofinite L (interp t rho) DfracDiscarded) as "[%l (%lfresh & #typ)]"; try done.
+
+        iApply fupd_frame_l; iSplit ; try done.
+        iApply fupd_frame_l; iSplitL "A".
+        (* ah, the view camera for the bijection is a bit more annoying
+            need to be careful how those resources are split *)
+         Admitted.
+
+
+    Lemma sem_typed_new Γ t :
+        ⊢  Γ ⊨ (New t) : TCase t.
+    Proof.
+        iIntros (rho gamma) "!# #HG".
+        iApply wp_wand.
+        iApply wp_new'.
+        iIntros (v) "[%l [%l' (B & P)]]".
+        simpl.
+        iExists l. iExists l'. iSplit.
+        - iApply "P".
+        - iApply "B".
+    Qed.
+
+End fund.
+
+
+ 
+
+
+
+(*     Lemma sep_persist (P Q : iProp Sig) { _ : Persistent P}{_ : Persistent Q} : Persistent (P ∗ Q).
+    apply _.
+    Qed.
+
+ (*    Check Forall Persistent.
+    Lemma bigOp_persist (xs : list (iProp Sig))(prfs : Forall Persistent xs) : Persistent ([∗] xs).
+    Proof.
+        induction prfs.
+        - apply _.
+        - unfold Persistent. simpl. iIntros "H".
+        iModIntro. 
+        eapply sep_persist. *)
+        Check big_sepL_persistent_id.
+
+    Check big_opL bi_sep _ _ .
+(*     Notation "'[∗]' Ps" := (big_opL bi_sep (λ _ x, x) Ps%I) : bi_scope.
+ *)
+
+
+(*     
+    Lemma pred_infinite (s : state): pred_infinite (fun (l : loc) =>  l = (fresh s)).
+    Proof.
+        Check sigT (elem_of s).
+        unfold pred_infinite.
+
+        apply (pred_infinite_set (C:=sigT (elem_of s) )).
+        Check infinite_is_fresh.
+        intros X.
+        Abort. *)
+          
+    Lemma newPred (P : iProp Σ) (s : state): ⊢ |==> P.
+    Proof.
+        iMod (saved_pred_alloc_cofinite s (fun (v : val) => True%I) DfracDiscarded) as "[%l (%fresh & #P)]".
+        - done. 
+        - 
+    Abort.
+
+        Check own_eq.
+        Check own_equal.
+        rewrite <- H3.
+        iMod (own_update name_set _ _ H2).
+        Check own_update.
+        iMod 
+        assert ({[(fresh s1, l)]} ∪ gset_cprod s1 L = gset_cprod (s1 ∪ {[fresh s1]}) (L ∪ {[l]})). {
+            admit.
+        } 
+        iRewrite H3.
+        Check gset_bij_auth_extend (fresh s1)l.
+
+
+
+        Check @big_opS_op.
+        Check big_opS_op (fun (p : loc * loc) => ⌜p.1 ∈ s1⌝%I)(fun (p : loc * loc) => (∃ P : wp_rules.D, p.2 ↦ P)%I) L.
+
+
+
+
+
+        pose proof (big_opS_op (fun (p : loc * loc) => ⌜p.1 ∈ s1⌝%I)(fun (p : loc * loc) => (∃ P : wp_rules.D, p.2 ↦ P)%I) L). 
+        iRewrite -(H0 with "B").
+        iApply (big_opS_op (fun (p : loc * loc) => ⌜p.1 ∈ s1⌝%I)(fun (p : loc * loc) => (∃ P : wp_rules.D, p.2 ↦ P)%I) L with "B") .
+        
+        Check gset_bij_auth_extend (fresh s1)l.
+        assert (∀ b' : gname, (fresh s1, b') ∉ L).
+        {
+            intros. set_solver.
+        }
+
+        iAssert (∀ b' : gname, (fresh s1, b') ∉ L)%I as "Hyp1".
+
+
+        iApply fupd_exist.
+        iExists L.
+        iModIntro.
+        iSplit. iApply "A".
+        
+
+        
+
+        iModIntro.
+        iSplit.
+        + done.
+        + iSplit.
+        2: { iExists l. iApply "typ". }
+        iDestruct "HStinterp" as "[%L (A & #B)]".
+        iApply fupd_frame_l.
+        i
+        Check is_fresh.
+        "[%l' (%fresh & #P)]"; try done.
+
+
+
+
+        (*  Show that we can extend state s1 with a fresh location *)
+        assert (s1 ~~> (s1 ∪ {[fresh s1]})) as update by done.
+        (* now how do we use that update to modify name_set 
+            using own_update? 
+          first, we only need the ownership under the update modality
+            so use the frame rules to shove things around  
+        *)
+        iApply fupd_frame_l.
+        iSplit. { done. }
+        iMod (own_update name_set s1 _ update with "HStinterp") as "#s1'".
+        iMod (saved_pred_alloc_cofinite s1 (interp t rho) DfracDiscarded) as "[%l' (%fresh & #P)]".
+        done.
+        iApply fupd_frame_r.
+        (* here we need to make a choice w.r.t. the spacial context
+           We dont need HPhi to prove ownership, but we do need it to show
+           that the post condition holds, so push it to that goal  *)
+        iSplitL "HStinterp".
+        (* now we can update the name_set *)
+        {
+            iMod (own_update name_set s1 _ update with "HStinterp") as "#s1'".
+            iMod (saved_pred_alloc_cofinite s1 (interp t rho) DfracDiscarded) as "[%l' (%fresh & #P)]".
+            done.
+            iModIntro ; done. 
+        }
+        rewrite H2. done.
+
+
+
+    Lemma wp_new t e v s l rho : 
+        {{{ own name_set s ∗ ⌜¬ l ∈ s /\ IntoVal (e .[Case l/]) v ⌝ }}}
+            (New t) 
+        {{{ v, RET v ; ∃ l, l ↦ (interp t rho)}}}.
+    Proof.
+        iIntros (phi) "(#H1 & %H2 & %H3) H4".
+
+        iApply wp_lift_atomic_base_step_no_fork; auto.
+                iIntros (s1 n k1 k2 n') "#HStinterp".
+        (* get access to the state interpretation *)
+        unfold weakestpre.state_interp; simpl; unfold state_interp.
+        (* handle the fact that New is reducible first *)
+        iModIntro. iSplit.
+        - iPureIntro; unfold base_reducible; repeat eexists; eapply NewS.
+        { unfold IntoVal in H3. simpl in H3. rewrite <- H3.  apply to_of_val. }
+        exact H2.
+
+
+        iApply wp_lift_pure_step_no_fork.
+        - intros s. unfold reducible. 
+        exists []. exists (e.[Case (fresh s)/]). exists (s ∪ {[fresh s]}). exists [].
+        simpl. econstructor. reflexivity.
+
+        unfold prim_step.
+        repeat eexists.
+        iApply wp_step_fupd.
+        - done.
+        - done.
+        iApply wp_unfold.
+        simpl.
+        red. simpl. red. simpl.
+        unfold wp. unfold wp'. simpl. red. red. red.
+
+
+(* 
+Lemma own_alloc_cofinite_dep (f : gname → A) (G : gset gname) :
+  (∀ γ, γ ∉ G → ✓ (f γ)) → ⊢ |==> ∃ γ, ⌜γ ∉ G⌝ ∗ own γ (f γ).
+Proof.
+  intros Ha.
+  apply (own_alloc_strong_dep f (λ γ, γ ∉ G))=> //.
+  apply (pred_infinite_set (C:=gset gname)).
+  intros E. set (γ := fresh (G ∪ E)).
+  ∃ γ. apply not_elem_of_union, is_fresh.
+Qed.
+ *)
+
+(* 
+    Lemma pInf (s : state): pred_infinite (fun g => g = (fresh s)).
+    Proof.
+        apply (pred_infinite_set (C:=gset gname)).
+          intros E. set (γ := fresh (s ∪ E)).
+        exists γ. split. set_solver. apply not_elem_of_union.
+        
+        apply not_elem_of_union, is_fresh.
+        intros. exists (fresh s). split. reflexivity. apply not_elem_of_union.
+ *)
+    Check fresh.
+    Lemma wp_new t (s : state) e v: 
+        {{{ own name_set s ∗ ⌜IntoVal (e .[Case (fresh s)/]) v ⌝ }}}
+            (New t e) 
+        {{{ v', RET v' ; True}}}.
+    Proof.
+        iIntros (phi) "(#H1 & %H2) H3".
+        iApply wp_lift_atomic_base_step_no_fork; auto.
+                iIntros (s1 n k1 k2 n') "#HStinterp".
+        (* get access to the state interpretation *)
+        unfold weakestpre.state_interp; simpl; unfold state_interp.
+        (* handle the fact that New is reducible first *)
+        iModIntro. iSplit.
+        - iPureIntro; unfold base_reducible; repeat eexists; eapply NewS.
+        { unfold IntoVal in H2. simpl in H2. subst. simpl. apply to_of_val. }
+
+    Lemma wp_new t (s : state) e v: 
+        {{{ own name_set s ∗ (∃ l, ⌜l ∈ s  /\ IntoVal (e .[Case (fresh s)/]) v ⌝) }}}
+            (New t e) 
+        {{{ v, RET v ; True}}}.
+
+
+(* 
+    Lemma wp_new t e v l rho : 
+        IntoVal (e.[Case l/]) v ->
+        ⊢ WP (New t e) {{ v, ∃ l, l ↦ (interp t rho)}}.
+    Proof. *)
+        intros ev. 
+        iStartProof.
+(*         iApply wp_fupd.
+ *)        (* break into the guts WP using using the language lifting *)
+        iApply wp_lift_atomic_base_step_no_fork; auto.
+        iIntros (s1 n k1 k2 n') "#HStinterp".
+        (* get access to the state interpretation *)
+        unfold weakestpre.state_interp; simpl; unfold state_interp.
+        (* handle the fact that New is reducible first *)
+        iModIntro. iSplit.
+        - iPureIntro; unfold base_reducible; repeat eexists; eapply NewS. 
+        { 
+            unfold IntoVal in ev. rewrite <- ev. simpl. apply to_of_val. }
+    Abort.
+
 (* 
         Lemma wp_new e v t : 
         IntoVal e v ->
@@ -447,6 +838,12 @@ Module fund.
     Proof.
         iIntros "#H1" (rho gamma) "!# #HG".
         unfold interp_expr.
+
+        Locate wp.
+        Check interp τ1 rho. 
+        iAssert ()
+        unfold interp_expr.
+        unfold interp_env. simpl.
         iApply wp_lift_atomic_base_step_no_fork; auto.
         iIntros (s1 n k1 k2 n') "#HStinterp".
         unfold weakestpre.state_interp; simpl; unfold state_interp.
@@ -467,27 +864,13 @@ Module fund.
         (* reduce expression e? *)
         iApply (interp_expr_bind [NewCtx τ1]).
         { iApply "H1". }
-    
+   
 
-
-
-(*     Lemma sep_persist (P Q : iProp Sig) { _ : Persistent P}{_ : Persistent Q} : Persistent (P ∗ Q).
-    apply _.
-    Qed.
-
- (*    Check Forall Persistent.
-    Lemma bigOp_persist (xs : list (iProp Sig))(prfs : Forall Persistent xs) : Persistent ([∗] xs).
-    Proof.
-        induction prfs.
-        - apply _.
-        - unfold Persistent. simpl. iIntros "H".
-        iModIntro. 
-        eapply sep_persist. *)
-        Check big_sepL_persistent_id.
-
-    Check big_opL bi_sep _ _ .
-(*     Notation "'[∗]' Ps" := (big_opL bi_sep (λ _ x, x) Ps%I) : bi_scope.
- *)
+    Check encode.
+    Check decode.
+    Locate decode.
+    Check encode_nat (9%positive).
+    Eval vm_compute in  encode_nat (9%positive). (* evaluates to 8 : nat *)
 
     Local Instance env_persist (Gamma : list type)(gamma : list val)(rho : list D) : Persistent (⟦ Gamma ⟧* rho gamma).
     Proof.
@@ -563,4 +946,3 @@ Module fund.
         iApply wp_value.
 
  *)
-End fund.

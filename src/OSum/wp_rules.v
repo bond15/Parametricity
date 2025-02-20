@@ -2,23 +2,48 @@
 From iris.program_logic Require Export weakestpre.
 From iris.program_logic Require Import ectx_lifting.
 From iris.base_logic Require Export invariants saved_prop .
-From iris.algebra Require Import gset.
+From iris.algebra Require Import gset gmap big_op gset_bij.
 From iris.proofmode Require Import proofmode.
 From iris.prelude Require Import options.
 
 Require Import Autosubst.Autosubst.
 
-From MyProject.src.OSum Require Export OSum.
+From MyProject.src.OSum Require Export persistent_pred OSum.
 
 Class logrelSig  Σ := Resources {
     invariants : invGS Σ;
     predicates :: savedPredG Σ val ;
-    names :: inG Σ (gsetR loc) ;
+    names :: inG Σ (gset_bijUR loc loc) ;
     name_set : gname
 }.
 
+Definition D `{logrelSig Σ}:= persistent_pred val (iProp Σ).
+
+Definition s1 : gset nat := union {[ 0]} {[ 1]}.
+Definition s2 : gset nat := union {[ 2]} {[ 1]}.
+
+Definition s3 : gset (nat * nat) := {[ pair 0  1]}.
+
+Check big_opS_op .
+
 Definition state_interp `{logrelSig Σ} (s : gset loc) : iProp Σ :=
-    own name_set s.
+    ∃ (s' : gset loc ) , 
+        own name_set (gset_bij_auth (DfracOwn 1) (gset_cprod s s')) ∗
+        [∗ set] l' ∈ s', (∃ (P : D), saved_pred_own l' (DfracDiscarded) P).
+
+(* Definition state_interp `{logrelSig Σ} (s : gset loc) : iProp Σ :=
+    ∃ (L : gset (loc * loc)) , 
+        own name_set (gset_bij_auth (DfracOwn 1) L) ∗
+        [∗ set] p ∈ L, ⌜p.1 ∈ s⌝ ∗ (∃ (P : D), saved_pred_own (p.2) (DfracDiscarded) P). *)
+
+Global Instance state_interp_persist `{logrelSig Σ} (s : gset loc) : Persistent (state_interp s).
+Proof.
+    unfold Persistent.
+Abort.
+
+(* `{logrelSig Σ} (s : gset loc)
+Definition state_interp `{logrelSig Σ} (s : gset loc) : iProp Σ :=
+    own name_set s. *)
 
 Global Instance OSum_irisGS `{logrelSig Σ} : irisGS OSum_lang Σ := {
     iris_invGS := invariants;
@@ -152,8 +177,23 @@ Section lang_rules.
     Qed.
 
 
+
+(* 
+
+    Print gname.
+    Check decode (_ : gname).
+    Definition gnamToLoc (g : gname) : option loc := decode g.
+    Eval simpl in gnamToLoc (2%n).
+    Definition foo (l : gname) : gname -> Prop := fun x => x = l.
+    Lemma fooI (l : gname) : pred_infinite (foo l).
+    Proof.saved_pred_alloc_cofinite
+        unfold pred_infinite.
+        intros.
+    Check saved_pred_alloc.
+    Check saved_pred_alloc_strong .
+
     Check gset_disj_alloc_updateP'.
-    Check own_update.
+    Check own_update. *)
 
 (*     Lemma test (g : gname)(s : gset loc): own g s ⊢ |={⊤}=> own g s.
     Proof.
@@ -190,7 +230,7 @@ Section lang_rules.
     iApply "HP".
     Qed.
 
-    Lemma sub (s s' : state)(upd : s ~~> s') : own name_set s ⊢ |={⊤}=> own name_set s'.
+(*     Lemma sub (s s' : state)(upd : s ~~> s') : own name_set s ⊢ |={⊤}=> own name_set s'.
     Proof.
         iIntros "H". 
         iMod (own_update name_set s s' upd with "H") as "H'".
@@ -198,53 +238,8 @@ Section lang_rules.
     Qed.
 (* WP (Case l).[env_subst gamma] {{ v, ⟦ TCase τ ⟧ rho v }}
  *)
-(*     Lemma wp_new e v t : 
-        IntoVal e v ->
-        ⊢ WP (New t e) {{ v', True }}.
-(*         {{{ True }}} New t e {{{ v', RET v'; True ∗ True }}}.
- *)    Proof.
-        intros ev.
-(*         iIntros (phi) "_ HPhi".
- *)        destruct ev.
-        (* break into the guts WP using using the language lifting *)
-        iApply wp_lift_atomic_base_step_no_fork; auto.
-        iIntros (s1 n k1 k2 n') "#HStinterp".
-        (* get access to the state interpretation *)
-        unfold weakestpre.state_interp; simpl; unfold state_interp.
 
-        (* handle the fact that New is reducible first *)
-        iModIntro. iSplit.
-        - iPureIntro; unfold base_reducible; repeat eexists; eapply NewS.
-        (* need to show that we can summon a fresh location *)
-        exact (is_fresh s1).
-        - (* now we need to handle the state update, 
-            first bring variables into scope  *)
-        iModIntro. iIntros (e2 s2 efs baseStep) "lc".
-        (* inversion on the base step *)
-        inversion baseStep; subst ; simpl.
-        (*  Show that we can extend state s1 with a fresh location *)
-        assert (s1 ~~> (s1 ∪ {[l]})) as update by done.
-        (* now how do we use that update to modify name_set 
-            using own_update? 
-          first, we only need the ownership under the update modality
-            so use the frame rules to shove things around  
-        *)
-        iApply fupd_frame_l.
-        iSplit. { done. }
-        iApply fupd_frame_r.
-        (* here we need to make a choice w.r.t. the spacial context
-           We dont need HPhi to prove ownership, but we do need it to show
-           that the post condition holds, so push it to that goal  *)
-        iSplitL "HStinterp".
-        (* now we can update the name_set *)
-        {
-            iMod (own_update name_set s1 _ update with "HStinterp");
-            iModIntro ; done. 
-        }
-        rewrite H2. done.
-    Qed.
  *)
-
 
 
 End lang_rules.

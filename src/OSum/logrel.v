@@ -2,7 +2,7 @@ From stdpp Require Import base gmap coPset tactics proof_irrel.
 
 From iris.base_logic Require Import invariants iprop upred saved_prop gen_heap.
 From iris.base_logic.lib Require Import ghost_map.
-From iris.algebra Require Import cofe_solver gset gmap_view excl.
+From iris.algebra Require Import cofe_solver gset gmap_view excl gset_bij.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import weakestpre.
 Require Import Autosubst.Autosubst.
@@ -12,32 +12,8 @@ From Equations Require Import Equations.
 From MyProject.src.OSum Require Export OSum persistent_pred wp_rules.
 
 Section logrel.
-(*  we want our semantic domain props to be persistant so they can be duplicated
- *)
-
-
-    Lemma not_dup (Σ : gFunctors)(P : iProp Σ): P ⊢ P ∗ P.
-    Proof.
-    Fail iIntros "#HP".
-    iIntros "HP".
-    iSplitL.
-    - done.
-    - (* hosed, we already used P *)Abort.
-
-    Lemma pers_dup (Σ : gFunctors)(P : iProp Σ) `{!Persistent P} : P ⊢ P ∗ P.
-    Proof.
-    iIntros "#HP".
-    iSplit.
-    - done.
-    - done.
-    Qed.
-
-
     Context`{logrelSig Σ}.
 
-    (* do we need to save persistent predicates instead of predicates ..?
-    
-     *)
     (* 
     
     persistent predicates state that the proposition P holds over the sharable parts (core) of the resource
@@ -49,10 +25,9 @@ Section logrel.
     Class Persistent {PROP : bi} (P : PROP) := 
         persistent : P ⊢ □ P.
 
+    do we need to save persistent predicates instead of predicates ..? 
      *)
      
-
-
     Definition D := persistent_pred val (iProp Σ).
 
     Lemma convert (n : nat)(x y : D) : 
@@ -76,8 +51,20 @@ Section logrel.
     Qed.
 
     Import uPred.
-    Local Program Definition pointsto_def (l : loc) : D -n> iPropO Σ  :=
-        λne P, (∃ (s : state), ⌜l ∈ s⌝ ∗ own name_set s  ∗ saved_pred_own (encode l) (DfracDiscarded) P)%I.
+    Local Program Definition pointsto_def (l l' : loc) : D -n> iPropO Σ  :=
+        λne P, (own name_set (gset_bij_elem l l') ∗ saved_pred_own l' (DfracDiscarded) P)%I.
+    Next Obligation.
+        intros l.
+        red. red. intros.
+(*         eapply uPred_primitive.exist_ne.
+        red. intros s. *)
+        eapply uPred_primitive.sep_ne.
+        - solve_proper.
+        -  eapply saved_persistent_pred_ne. exact H0.
+    Qed.
+
+(*     Local Program Definition pointsto_def (l : loc) : D -n> iPropO Σ  :=
+        λne P, (∃ (s : state), ⌜l ∈ s⌝ ∗ own name_set s  ∗ saved_pred_own l (DfracDiscarded) P)%I.
     Next Obligation.
         intros l.
         red. red. intros.
@@ -89,7 +76,7 @@ Section logrel.
         + solve_proper.
         + eapply saved_persistent_pred_ne. exact H0.
     Qed.
-
+ *)
 
 (*     Local Definition pointsto_def (l : loc)  (P : D) : iProp Σ :=
         (∃ (s : state), ⌜l ∈ s⌝  ∗ own name_set s  ∗ saved_pred_own (encode l) (DfracDiscarded) P)%I.
@@ -126,10 +113,10 @@ Section logrel.
         solve_proper.
     Qed.
           
-    Local Notation "l ↦□ v" := (pointsto_def l v)
-        (at level 20,  format "l ↦□ v") : bi_scope.
+    Local Notation "l @ l' ↦□ v" := (pointsto_def l l' v)
+        (at level 20,  format "l @ l' ↦□ v") : bi_scope.
 
-    Global Instance mypointsto_persist (l : loc)  (P : D) : Persistent (l ↦□ P).
+    Global Instance mypointsto_persist (l l': loc)  (P : D) : Persistent (l @ l' ↦□ P).
     apply _. Qed.
 
     Definition VRelType := listO D -n> D.
@@ -152,10 +139,10 @@ Section logrel.
     Solve Obligations with solve_proper.
 
     Definition interp_TCase' (interp : VRelType)(rho : listO D) : D :=
-        PersPred(fun v => (∃ l, ⌜v = CaseV l⌝ ∗ l ↦□ (interp rho)))%I.
+        PersPred(fun v => (∃ l l' , ⌜v = CaseV l⌝ ∗ l @ l' ↦□ (interp rho)))%I.
 
     Local Instance interp_TCase'_ne (interp : VRelType)(rho : listO D)  : 
-        NonExpansive (PersPred(fun v => (∃ l, ⌜v = CaseV l⌝ ∗ l ↦□ (interp rho)))%I).
+        NonExpansive (PersPred(fun v => (∃ l l', ⌜v = CaseV l⌝ ∗ l @ l' ↦□ (interp rho)))%I).
     Proof.        
         eapply persistant_pred_ne.
     Qed.
@@ -177,9 +164,8 @@ Section logrel.
 
 
     Program Definition interp_TOSum : VRelType := 
-        λne rho, PersPred(fun v =>(∃ l v' P , ⌜v = InjV (CaseV l) v'⌝ ∗ l ↦□ P ∗ P v'))%I.
+        λne rho, PersPred(fun v =>(∃ l l' v' P , ⌜v = InjV (CaseV l) v'⌝ ∗ l @ l'  ↦□ P ∗ P v'))%I.
 
-    (* what if state is modified ? *)
     Program Definition interp_TArrow (interp1 interp2 : VRelType) : VRelType := 
         λne rho, PersPred(fun v => 
             (□ ∀ v', interp1 rho v' → WP App (of_val v) (of_val v') {{ interp2 rho }}))%I.
@@ -195,7 +181,16 @@ Section logrel.
     Next Obligation.
         intros i1. solve_proper.
     Qed.
-
+    Check later_own.
+    (* forall fresh would be something like...  *)
+(*     Program Definition interp_FreshForall (interp : VRelType) : VRelType := 
+        λne rho, PersPred(fun v => 
+            (□ ∀ (P : D)(l : loc), |==> l ↦□ P →  WP (App (TApp (of_val v)) (Case l)) {{ interp (P :: rho) }} )
+        )%I. (* guard P? *)
+    Next Obligation.
+        intros i1. solve_proper.
+    Qed.
+ *)
     Program Definition interp_TExist (interp : VRelType) : VRelType := 
         λne rho, PersPred(fun v => 
             (∃ (τi : D) v' ,  ⌜v = PackV v'⌝ ∗ interp (τi :: rho) v))%I.
@@ -267,9 +262,9 @@ Section logrel.
     Check ren.
 
 
-     Lemma interp_weaken Δ1 Π Δ2 τ :
-    ⟦ τ.[upn (length Δ1) (ren (+ length Π))] ⟧ (Δ1 ++ Π ++ Δ2)
-    ≡ ⟦ τ ⟧ (Δ1 ++ Δ2).
+    Lemma interp_weaken Δ1 Π Δ2 τ :
+        ⟦ τ.[upn (length Δ1) (ren (+ length Π))] ⟧ (Δ1 ++ Π ++ Δ2)
+        ≡ ⟦ τ ⟧ (Δ1 ++ Δ2).
   Proof.
     revert Δ1 Π Δ2. induction τ=> Δ1 Π Δ2; simpl; auto; intros ?; simpl.
     - by repeat (f_equiv; try match goal with IH : ∀ _, _ |- _ => by apply IH end).
