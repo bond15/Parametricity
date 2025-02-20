@@ -214,6 +214,43 @@ Module fund.
         iModIntro. iIntros. iApply wp_value. iApply "interp_v2".
     Qed.
 
+      Lemma sem_typed_if Γ e0 e1 e2 τ :
+        Γ ⊨ e0 : TBool -∗ Γ ⊨ e1 : τ -∗ Γ ⊨ e2 : τ -∗ Γ ⊨ If e0 e1 e2 : τ.
+    Proof.
+        iIntros "#IH1 #IH2 #IH3" (Δ vs) "!# #HΓ"; simpl.
+        iApply (interp_expr_bind [IfCtx _ _]); first by iApply "IH1".
+        iIntros (v) "#Hv /=".
+        iDestruct "Hv" as ([]) "%"; subst; simpl;
+        [iApply wp_pure_step_later .. ]; auto; iIntros "!> _";
+            [iApply "IH2"| iApply "IH3"]; auto.
+    Qed.
+
+    Lemma sem_typed_int_binop Γ op e1 e2 :
+        Γ ⊨ e1 : TInt -∗ Γ ⊨ e2 : TInt -∗ Γ ⊨ BinOp op e1 e2 : binop_res_type op.
+    Proof.
+        iIntros "#IH1 #IH2" (Δ vs) "!# #HΓ /=".
+        iApply (interp_expr_bind [BinOpLCtx _ _]); first by iApply "IH1".
+        iIntros (v) "#Hv /=".
+        iApply (interp_expr_bind [BinOpRCtx _ _]); first by iApply "IH2".
+        iIntros (w) "#Hw/=".
+        iDestruct "Hv" as (n) "%"; iDestruct "Hw" as (n') "%"; simplify_eq/=.
+        iApply wp_pure_step_later; [done|]; iIntros "!> _". iApply wp_value.
+        destruct op; simpl; try destruct Z.eq_dec;
+        try destruct Z.le_dec; try destruct Z.lt_dec; eauto 10.
+    Qed.
+
+
+    Lemma sem_typed_Eq_binop Γ e1 e2 τ :
+        Γ ⊨ e1 : τ -∗ Γ ⊨ e2 : τ -∗ Γ ⊨ BinOp Eq e1 e2 : TBool.
+    Proof.
+        iIntros "#IH1 #IH2" (Δ vs) "!# #HΓ /=".
+        iApply (interp_expr_bind [BinOpLCtx _ _]); first by iApply "IH1".
+        iIntros (v) "#Hv /=".
+        iApply (interp_expr_bind [BinOpRCtx _ _]); first by iApply "IH2".
+        iIntros (w) "#Hw/=".
+        iApply wp_pure_step_later; [done|]; iIntros "!> _". iApply wp_value; eauto.
+    Qed.
+
     Lemma sem_typed_lam Γ e τ1 τ2 : τ1 :: Γ ⊨ e : τ2 -∗ Γ ⊨ Lam e : TArrow τ1 τ2.
     Proof.
         iIntros "#HP" (rho gamma) "!# #HG". 
@@ -602,15 +639,15 @@ Module fund.
         - iApply sem_typed_unit; done.
         - iApply sem_typed_int; done.
         - iApply sem_typed_bool; done.
-        - admit. (* sem_typed_int_binop *)
-        - admit.  (* sem_typed_Eq_binop *)
+        - iApply sem_typed_int_binop; done.
+        - iApply sem_typed_Eq_binop; done.
         - iApply sem_typed_pair; done.
         - iApply sem_typed_fst; done.
         - iApply sem_typed_snd; done.
         - iApply sem_typed_osum; done.
         - iApply sem_typed_caseOf; done.
         - iApply sem_typed_new; done.
-        - admit. (* sem_typed_if *)
+        - iApply sem_typed_if; done.
         - iApply sem_typed_lam; done.
         - iApply sem_typed_letin; done.
         - iApply sem_typed_app; done.
@@ -618,7 +655,7 @@ Module fund.
         - iApply sem_typed_tapp; done.
         - iApply sem_typed_pack; done.
         - iApply sem_typed_unpack; done.
-    Admitted.
+    Qed.
 
 
 End fund.
