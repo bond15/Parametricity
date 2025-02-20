@@ -112,7 +112,7 @@ Module fund.
         done.
     Qed.
 
-    Lemma sem_typed_int Γ (n : nat) : ⊢ Γ ⊨ #n n : TInt.
+    Lemma sem_typed_int Γ (n : Z) : ⊢ Γ ⊨ #n n : TInt.
     Proof.
         iIntros (rho gamma) "!# _".
         iApply wp_value.
@@ -317,7 +317,49 @@ Module fund.
         iIntros (w) "?". by iApply interp_subst.
     Qed.
 
+ Lemma sem_typed_letin Γ e1 e2 τ1 τ2 : Γ ⊨ e1 : τ1 -∗ τ1 :: Γ ⊨ e2 : τ2 -∗ Γ ⊨ LetIn e1 e2: τ2.
+  Proof.
+    iIntros "#IH1 #IH2" (Δ vs) "!# #HΓ"; simpl.
+    iApply (interp_expr_bind [LetInCtx _]); first by iApply "IH1".
+    iIntros (v) "#Hv /=".
+    iDestruct (interp_env_length with "HΓ") as %?.
+    iApply wp_pure_step_later; auto 1 using to_of_val. iIntros "!> _".
+    asimpl. iApply ("IH2" $! Δ (v :: vs)).
+    iApply interp_env_cons; iSplit; eauto.
+  Qed.
 
+    (* something off with existentials, check these. *)
+    Lemma sem_typed_pack Γ e τ τ' : Γ ⊨ e : τ.[τ'/] -∗ Γ ⊨ Pack e : TExist τ.
+    Proof.
+        iIntros "#IH" (Δ vs) "!##HΓ /=".
+        iApply (interp_expr_bind [PackCtx]); first by iApply "IH".
+        iIntros (v) "#Hv /=".
+        iApply wp_value.
+        rewrite -interp_subst.
+        iExists (interp _ Δ), _. fold interp. iSplit. done.
+        (* huh..?  *) admit.
+    Admitted.
+
+    Lemma sem_typed_unpack Γ e1 e2 τ τ' :
+        Γ ⊨ e1 : TExist τ -∗
+        τ :: (subst (ren (+1)) <$> Γ) ⊨ e2 : τ'.[ren (+1)]  -∗
+        Γ ⊨ UnpackIn e1 e2 : τ'.
+    Proof.
+        iIntros "#IH1 #IH2" (Δ vs) "!# #HΓ /=".
+        iApply (interp_expr_bind [UnpackInCtx _]); first by iApply "IH1".
+        iIntros (v) "#Hv /=".
+        iDestruct "Hv" as (τi w ->) "#Hw"; simpl.
+        iApply wp_pure_step_later; auto 1 using to_of_val. iIntros "!> _".
+        asimpl.
+        iApply wp_wand_r; iSplitL.
+        { iApply ("IH2" $! (τi :: Δ) (w :: vs) with "[]").
+        iApply interp_env_cons. iSplit. admit. 
+        iApply interp_env_ren; done. }
+        iIntros (u) "Hu".
+        iApply (interp_weaken [] [_]); done.
+    Admitted.
+
+    (* ------------- NEW stuff ------------------------ *)
 
 (*     Local Notation "l ↦□ v" := (logrel.pointsto_def l v)
     (at level 20,  format "l ↦□ v") : bi_scope. *)
@@ -556,6 +598,32 @@ Module fund.
         - iApply "P".
         - iApply "B".
     Qed.
+
+    Theorem fundamental Γ e τ : Γ ⊢ₜ e : τ → ⊢ Γ ⊨ e : τ.
+    Proof.
+        induction 1.
+        - iApply sem_typed_var; done.
+        - iApply sem_typed_unit; done.
+        - iApply sem_typed_int; done.
+        - iApply sem_typed_bool; done.
+        - admit. (* sem_typed_int_binop *)
+        - admit.  (* sem_typed_Eq_binop *)
+        - iApply sem_typed_pair; done.
+        - iApply sem_typed_fst; done.
+        - iApply sem_typed_snd; done.
+        - iApply sem_typed_letin; done.
+        - iApply sem_typed_osum; done.
+        - iApply sem_typed_caseOf; done.
+        - iApply sem_typed_new; done.
+        - admit. (* sem_typed_if *)
+        - iApply sem_typed_lam; done.
+        - iApply sem_typed_app; done.
+        - iApply sem_typed_tlam; done.
+        - iApply sem_typed_tapp; done.
+        - iApply sem_typed_pack; done.
+        - iApply sem_typed_unpack; done.
+    Admitted.
+
 
 End fund.
 

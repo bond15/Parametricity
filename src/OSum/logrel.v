@@ -129,7 +129,7 @@ Section logrel.
          λne rho, PersPred(fun v => ⌜v = UnitV⌝%I).
 
     Definition interp_TInt : VRelType := 
-        λne rho, PersPred(fun v =>(∃ (n : nat), ⌜v = IntV n⌝))%I.
+        λne rho, PersPred(fun v =>(∃ (z : Z), ⌜v = IntV z⌝))%I.
 
     Definition interp_TBool : VRelType := 
         λne rho, PersPred(fun v => (∃ (b : bool), ⌜v = BoolV b⌝))%I.

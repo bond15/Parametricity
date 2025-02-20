@@ -114,6 +114,10 @@ Section lang_rules.
     Global Instance pure_tlam e : PureExec True 1 (TApp (TLam e)) e.
     Proof. solve_pure_exec. Qed.
 
+    Global Instance pure_LetIn e1 e2 `{!AsVal e1} :
+        PureExec True 1 (LetIn e1 e2) e2.[e1 /].
+    Proof. solve_pure_exec. Qed.
+
     Global Instance pure_pack e1 `{!AsVal e1} e2:
         PureExec True 1 (UnpackIn (Pack e1) e2) e2.[e1/].
     Proof. solve_pure_exec. Qed.

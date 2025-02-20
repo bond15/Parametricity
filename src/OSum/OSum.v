@@ -15,7 +15,6 @@ Inductive type :=
   | TProd : type → type → type
   | TArrow : type → type → type   
   | TVar (x : var)
-  (* removing type from  *)
   | TCase (τ : {bind type})
   | TForall (τ : {bind type})
   | TExist (τ : {bind type}).
