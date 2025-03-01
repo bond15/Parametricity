@@ -1,7 +1,7 @@
 From stdpp Require Import base gmap coPset tactics proof_irrel.
 
 From iris.base_logic Require Import invariants iprop upred saved_prop gen_heap.
-From iris.base_logic.lib Require Import ghost_map.
+From iris.base_logic.lib Require Import ghost_map gset_bij.
 From iris.algebra Require Import cofe_solver gset gmap_view excl gset_bij.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import weakestpre.
@@ -11,7 +11,93 @@ From Equations Require Import Equations.
 
 From MyProject.src.OSum Require Export OSum persistent_pred wp_rules.
 
-Section logrel.
+
+(*  dumb
+
+Class gen_heapGpreS (L V : Type) (Σ : gFunctors) `{Countable L} := {
+  #[local] gen_heapGpreS_heap :: ghost_mapG Σ L V;
+  #[local] gen_heapGpreS_meta :: ghost_mapG Σ L gname;
+  #[local] gen_heapGpreS_meta_data :: inG Σ (reservation_mapR (agreeR positiveO));
+}.
+
+Class gen_heapGS (L V : Type) (Σ : gFunctors) `{Countable L} := GenHeapGS {
+  #[local] gen_heap_inG :: gen_heapGpreS L V Σ;
+  gen_heap_name : gname;
+  gen_meta_name : gname
+}.*)
+
+Class RelationResources  Σ := RelRes{
+    predicates :: savedPredG Σ val ;
+    bijection :: gset_bijG Σ loc loc ;
+}.
+
+Class typeStore  Σ  := TypeStore {
+    resources :: RelationResources Σ ; 
+    name_set : gname
+}.
+
+Class logrelSig Σ := LogRelSig {
+    invariants : invGS Σ;
+    store :: typeStore  Σ 
+}.
+
+(* Class logrelSig  Σ := Resources {
+    invariants : invGS Σ;
+    predicates :: savedPredG Σ val ;
+    names :: gset_bijG Σ loc loc ;
+    name_set : gname
+}. *)
+
+    
+    Definition D `{ts : !typeStore Σ}:= persistent_pred val (iProp Σ).
+
+    Definition combine (l1 l2 : list loc) : gset (loc * loc) := 
+        list_to_set (zip l1 l2).
+
+    Definition state_interp  `{ts : !typeStore Σ}(s : list loc) : iProp Σ :=
+        ∃ (s' : list loc ) , 
+                gset_bij_own_auth name_set (DfracOwn 1) (combine s s')  ∗
+                [∗ list] l' ∈ s', (∃ (P : D), saved_pred_own l' (DfracDiscarded) P).
+
+
+Lemma init_state' {Σ : gFunctors}`{!RelationResources Σ}: 
+    ⊢@{ iProp Σ } |==> 
+        ∃ g : gname, 
+            let ts := TypeStore Σ _ g in 
+            @state_interp Σ ts [].
+Proof.
+    iMod (gset_bij_own_alloc_empty) as (g') "bij".
+    iModIntro.
+    iExists g'.
+    iAssert (@state_interp Σ (TypeStore Σ _ g') []) with "[bij]" as "[%s' (P & Q)]".
+    {
+        iExists []. unfold empty. simpl. iSplitL ; done. 
+    } simpl.
+    unfold state_interp. iExists s'. iFrame.
+Qed.
+
+Lemma init_state {Σ : gFunctors}`{!RelationResources Σ}: 
+    ⊢@{ iProp Σ } |==> 
+        ∃ ts : typeStore  Σ ,  
+            @state_interp Σ ts [].
+Proof.
+    iMod (init_state') as "[%g s]".
+    iModIntro. iExists (TypeStore Σ _ g ). 
+    iApply "s".
+Qed.
+
+
+
+
+Global Instance OSum_irisGS `{logrelSig Σ} : irisGS OSum_lang Σ := {
+    iris_invGS := invariants;
+    num_laters_per_step _ := 0;
+    state_interp s  _ _ _ := state_interp s;
+    fork_post _ := True%I;
+    state_interp_mono _ _ _ _ := fupd_intro _ _
+}.
+
+Section unary_logrel.
     Context`{logrelSig Σ}.
 
     (* 
@@ -29,7 +115,6 @@ Section logrel.
     do we need to save persistent predicates instead of predicates ..? 
      *)
      
-    Definition D := persistent_pred val (iProp Σ).
 
     Lemma convert (n : nat)(x y : D) : 
         @dist_later D (ofe_dist D) n x y -> 
@@ -58,7 +143,7 @@ Section logrel.
         using a view element for the bijection, not the authoritative element
     *)
     Local Program Definition pointsto_def (l l' : loc) : D -n> iPropO Σ  :=
-        λne P, (own name_set (gset_bij_elem l l') ∗ saved_pred_own l' (DfracDiscarded) P)%I.
+        λne P, (gset_bij_own_elem name_set l l' ∗ saved_pred_own l' (DfracDiscarded) P)%I.
     Next Obligation.
         intros l.
         red. red. intros.
@@ -101,19 +186,55 @@ Section logrel.
     Proof.        
         solve_proper.
     Qed.
-        
-    (* annoying.. The predicate for interp_TCase is non expansive...
-        But I still need to lift that for any rho... *)
+
+    (* solve_proper breaks here because saved_predicates are contractive
+    There's probably a better way to do this.
+    *)
     Program Definition interp_TCase (interp : VRelType) : VRelType := 
-         λne rho, interp_TCase' interp rho.
+        λne rho, 
+            PersPred(fun v => (∃ l l' , ⌜v = CaseV l⌝ ∗ (l @ l' ↦□ (interp rho))))%I.
     Next Obligation.
-        intro.
-        red. red. intros.
-        try rewrite persistent_pred_ext.
-        pose proof (interp_TCase'_ne interp x ).
-        pose proof (interp_TCase'_ne interp y ).
-        pose proof (persistent_pred_car_ne val (iProp Σ) n (interp_TCase' interp x )(interp_TCase' interp y ) ).
-    Admitted.
+        intros ? ? ? ? ? . split. simpl. 
+        intros.
+        split.
+        - intros.
+        eapply uPred_holds_ne.
+        4 :{ exact H3. }  2:{ done. } 2:{ exact H2. }
+        apply exist_ne. red. intros.
+        apply exist_ne. red. intros.
+        apply sep_ne. { done. }
+        apply sep_ne. { done. }
+        (* the "issue" *)
+        apply saved_pred_own_contractive.
+        pose proof (ofe_mor_ne _ _ interp n x y H0).
+        apply dist_dist_later in H4.
+        destruct (decide (n = n')).
+        + subst. apply symmetry. apply convert. done. 
+        + assert (n' < n). {lia. }
+        apply dist_dist_later.
+        pose proof (dist_later_dist_lt _ _ _ _ H5 H4).
+        apply symmetry.
+        done.
+        - intros.
+        (* exact same proof... *)
+        eapply uPred_holds_ne.
+        4 :{ exact H3. }  2:{ done. } 2:{ exact H2. }
+        apply exist_ne. red. intros.
+        apply exist_ne. red. intros.
+        apply sep_ne. { done. }
+        apply sep_ne. { done. }
+        apply saved_pred_own_contractive.
+        pose proof (ofe_mor_ne _ _ interp n x y H0).
+        apply dist_dist_later in H4.
+        destruct (decide (n = n')).
+        + subst. apply symmetry. apply convert. done. 
+        + assert (n' < n). {lia. }
+        apply dist_dist_later.
+        pose proof (dist_later_dist_lt _ _ _ _ H5 H4).
+        apply symmetry.
+        done.
+    Qed.
+
      
     Program Definition interp_TOSum : VRelType := 
         λne rho, PersPred(fun v =>(∃ l l' v' P , ⌜v = InjV (CaseV l) v'⌝ ∗ l @ l'  ↦□ P ∗ P v'))%I.
@@ -258,7 +379,7 @@ Section logrel.
     Admitted.
     
 
-End logrel.
+End unary_logrel.
 
 Global Typeclasses Opaque interp_env.
 Notation "⟦ τ ⟧" := (interp τ).

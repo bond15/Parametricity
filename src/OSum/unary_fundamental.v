@@ -1,7 +1,7 @@
 From stdpp Require Import base gmap coPset tactics proof_irrel sets.
 
 From iris.base_logic Require Import invariants iprop upred saved_prop gen_heap.
-From iris.base_logic.lib Require Import ghost_map.
+From iris.base_logic.lib Require Import ghost_map gset_bij.
 From iris.algebra Require Import cofe_solver gset gmap_view excl gset_bij.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import weakestpre ectx_lifting.
@@ -9,7 +9,7 @@ Require Import Autosubst.Autosubst.
 
 From Equations Require Import Equations.
 
-From MyProject.src.OSum Require Export OSum logrel.
+From MyProject.src.OSum Require Export OSum unary_logrel.
 
 
 Fixpoint env_subst (vs : list val) : var → expr :=
@@ -23,9 +23,10 @@ end.
 Definition log_typed `{logrelSig Σ} (Γ : list type) (e : expr) (τ : type) : iProp Σ :=
     (□ ∀ rho (vs : list val), ⟦ Γ ⟧* rho vs -∗ ⟦ τ ⟧ₑ rho e.[env_subst vs])%I.
 
+
 Notation "Γ ⊨ e : τ" := (log_typed Γ e τ) (at level 74, e, τ at next level).
 
-Module fund.
+Section fund.
   
     Import OSum.
 
@@ -374,7 +375,7 @@ Module fund.
 
     (* ------------- NEW stuff ------------------------ *)
 
-    Local Notation "l @ l' ↦□ v" := (logrel.pointsto_def l l' v)
+    Local Notation "l @ l' ↦□ v" := (unary_logrel.pointsto_def l l' v)
     (at level 20,  format "l @ l' ↦□ v") : bi_scope. 
 
     Lemma sem_typed_osum Γ e1 e2 τ :
@@ -410,37 +411,21 @@ Module fund.
         iApply (saved_pred_agree with "Q Q'").
     Qed. 
 
-    (* hack and slash, clean this *)
     Lemma loc_agree_L l1 l2 l3 P P'  : l1 @ l2 ↦□P -∗ l3 @ l2 ↦□ P' -∗ ⌜l1 = l3⌝.
     Proof.
          iIntros "(B1 & _) (B2 & _)".
-         Check  gset_bij_elem_agree.
-         Check own_op.
-         iStopProof.
-         iIntros "P".
-         iPoseProof (own_op name_set _ _ with "P")as "foo".
-         iPoseProof (own_valid with "foo") as "%bar".
-         apply gset_bij_elem_agree in bar.
-         destruct bar.
-         pose proof (H1 eq_refl).
-         iPureIntro. done.
+         iPoseProof (gset_bij_own_elem_agree with "B1 B2") as "%agree".
+         iPureIntro.
+         rewrite agree. done.
     Qed.
 
     Lemma loc_agree_R l1 l2 l3 P P'  : l1 @ l2 ↦□P -∗ l1 @ l3 ↦□ P' -∗ ⌜l2 = l3⌝.
     Proof.
-         iIntros "(B1 & _) (B2 & _)".
-         Check  gset_bij_elem_agree.
-         Check own_op.
-         iStopProof.
-         iIntros "P".
-         iPoseProof (own_op name_set _ _ with "P")as "foo".
-         iPoseProof (own_valid with "foo") as "%bar".
-         apply gset_bij_elem_agree in bar.
-         destruct bar.
-         pose proof (H0 eq_refl).
-         iPureIntro. done.
+        iIntros "(B1 & _) (B2 & _)".
+        iPoseProof (gset_bij_own_elem_agree with "B1 B2") as "%agree".
+        iPureIntro.
+        apply agree. done.
     Qed.
-
 
     Lemma sem_typed_caseOf  Γ e1 e2 e3 e4 τ1 τ2 : 
         Γ ⊨ e1 : TOSum -∗ (* thing to destruct *)
@@ -463,9 +448,7 @@ Module fund.
         (* The values of OSum and Case both hold locations, 
             dispatch redution rules based on the decidable equality of locations *)
         iDestruct "HV1" as "[%l1 [%l2 [%osumVal [%P (%inj & #prf1 & #typ)]]]]".
-        iDestruct "HV2" as "[%l3 [%l4 (%case & #prf2)]]".
-        subst.
-        fold interp.
+        iDestruct "HV2" as "[%l3 [%l4 (%case & #prf2)]]" ;subst ;fold interp.
         (* have
             prf1 : l1@l2↦□P
             prf2 : l3@l4↦□⟦ τ1 ⟧ rho
@@ -516,82 +499,72 @@ Module fund.
     Local Notation "l ↦ P" := (saved_pred_own l DfracDiscarded P)
     (at level 20,  format "l ↦ P") : bi_scope.
 
-    (* proved, but not strong enough, 
-        need to mention the other location in bijection with l'
-        and that ⌜v = CaseV l⌝*)
-    Lemma wp_new t rho : 
-        ⊢ WP (New t) {{ v, ∃ l', l' ↦ (interp t rho)}}.
+    Lemma not_in_combine_left (l1 l2 : list loc) a b : 
+        a ∉ l1 -> 
+        (a , b) ∉ combine l1 l2 .
     Proof.
-        iApply wp_lift_atomic_base_step_no_fork; auto.
-        iIntros (s1 n k1 k2 n') "[%L (A & #B)]".
-        (* get access to the state interpretation *)
-        unfold weakestpre.state_interp; simpl; unfold state_interp.
-        (* handle the fact that New is reducible first *)
-        iModIntro. iSplit.
-        - iPureIntro; unfold base_reducible; repeat eexists; eapply NewS.
-        (* now we need to handle the state update, 
-            first bring variables into scope  *)
-        -
-        iModIntro; iIntros (e2 s2 efs baseStep) "lc".
-        (* inversion on the base step *)
-        inversion baseStep; subst ; simpl.
-        (* here we allocate a new predicate representing the typing of t *)
-        iMod (saved_pred_alloc_cofinite L (interp t rho) DfracDiscarded) as "[%l (%lfresh & typ)]"; try done.
-        (* Now we just have to show that the state interpretation is preserved
-          and that we have a location pointing to a predicate representing typing of t
-            which we just allocated *)
-        (* no forks *)
-        iApply fupd_frame_l; iSplit ; try done.
-        (* prove the WP post condition with "typ" *)
-        iApply fupd_frame_r. iSplit. 2: { iExists l; iApply "typ". }
-        (* Trickier part, showing that the state interpretation is preserved
-            here we have to update our bijection of fresh names
-            we have two new names "fresh s1" and "l"
-            and we need to update the saved predicate map wit our newly allocated predicate
-         *)
-        iExists (L ∪ {[l]}).
-        (* update the saved predicate map *)
-        iApply fupd_frame_r. iSplit. 2: {
-            iApply big_opS_union.
-            - set_solver.
-            - iSplit. {iApply "B". }
-            iApply big_opS_singleton . iExists (interp t rho). iApply "typ".
-        }
-        (* show update the name bijection.
-            Note: this seems to be a newer camera in Iris and is missing some useful lemmas
-            Clean this up and add to their library
-         *)
-        (* first step, show that "(fresh s1, l)" is a new element of (gset_cprod s1 L) *)
-        assert (∀ b' : gname, (fresh s1, b') ∉ (gset_cprod s1 L)). {
-            intros. rewrite elem_of_gset_cprod. unfold not. intros. destruct H0. simpl in H0.
-            pose proof (is_fresh s1). contradiction.
-        } 
-        assert (∀ a' : loc, (a', l) ∉ (gset_cprod s1 L)). {
-            intros. rewrite elem_of_gset_cprod. unfold not. intros. destruct H1. simpl in H2. contradiction. 
-        }
-        (* now we can derive a valid update ~~> *) 
-        pose proof (gset_bij_auth_extend (fresh s1)l H0 H1).
-        (* The update is for a set that is obviously equal.. but we have to prove this *)
-        assert ({[(fresh s1, l)]} ∪ gset_cprod s1 L = gset_cprod (s1 ∪ {[fresh s1]}) (L ∪ {[l]})). {
-          (* obvious, but annoying to prove  *) admit.
-          (*   apply set_eq. apply elem_of_gset_cprod *) }
-        (* fix the update target with the correct set *)
-        rewrite H3 in H2.
-        (* Finally.. with the update in hand, we can update the cell "new_set" *) 
-        iMod (own_update name_set _ _ H2 with "A") as "goal".
-        done.
-        (* proof is finished modulo dumb proof that two obviously equal sets are equal *)
-    Admitted.
+        unfold not. intros.
+        apply elem_of_list_to_set in H1.
+        apply elem_of_zip_l in H1.
+        apply H0. exact H1. 
+    Qed.
 
-    (* Need to enhance the WP of new to prove semantic typing
-        specifically we need to surface the fact that there is a bijection on locations 
-        and the case returned by New is in bijection with a new predicate
-     *)
-    Lemma wp_new' t rho : 
+    Lemma not_in_combine_right (l1 l2 : list loc) a b : 
+        b ∉ l2 -> 
+        (a , b) ∉ combine l1 l2 .
+    Proof.
+        unfold not. intros.
+        apply elem_of_list_to_set in H1.
+        apply elem_of_zip_r in H1.
+        apply H0. exact H1. 
+    Qed.
+
+    Lemma adjust_combine {A B} a b :
+        a ∉ A -> 
+        b ∉ B -> 
+        {[(a, b)]} ∪ combine A B = combine (a :: A) (b :: B).
+    Proof.
+        intros.
+        rewrite set_eq.
+        intros (a' , b').
+        split.
+        - intros. 
+        destruct (decide (a = a' /\ b = b')).
+        {
+            destruct a0; subst.
+            apply elem_of_list_to_set.
+            rewrite (zip_with_app pair [a'] A [b'] B eq_refl).
+            constructor.
+        }
+         apply elem_of_list_to_set.
+        pose proof (zip_with_app pair [a] A [b] B eq_refl).
+        rewrite H3.
+        apply elem_of_list_further.
+        pose proof ( elem_of_union {[(a, b)]} (combine A B) (a' , b')).
+        apply H4 in H2.
+        destruct H2.
+        +        assert ( (a , b) <> (a' , b')). {
+            unfold not. intros. inversion H5. apply n. done.
+        }
+        rewrite elem_of_singleton in H2. symmetry in H2. contradiction.
+        + unfold combine in H2.            
+         apply elem_of_list_to_set in H2. exact H2.
+        -
+        intros.
+        unfold combine in H2. apply elem_of_list_to_set in H2.
+        simpl in H2.
+        unfold combine.
+        Search list_to_set.
+        rewrite <- list_to_set_cons.
+        apply elem_of_list_to_set. exact H2.
+    Qed.
+
+
+    Lemma wp_new t rho : 
         ⊢ WP (New t) {{ v,∃ l l', l @ l' ↦□(interp t rho) ∗ ⌜v = CaseV l⌝}}.
     Proof.
-        iApply wp_lift_atomic_base_step_no_fork; auto.
-        iIntros (s1 n k1 k2 n') "[%L (A & #B)]".
+        iApply wp_lift_atomic_base_step_no_fork; auto;  simpl.
+        iIntros (s1 _ k1  _ _) "[%L (A & #B)]".
                     (* get access to the state interpretation *)
         unfold weakestpre.state_interp; simpl; unfold state_interp.
         (* handle the fact that New is reducible first *)
@@ -599,35 +572,59 @@ Module fund.
         - iPureIntro; unfold base_reducible; repeat eexists; eapply NewS.
         (* only obligation is that we need to be able to summon a fresh name *)
 (*         exact (is_fresh s1).
- *)        - (* now we need to handle the state update, 
+ *)      - (* now we need to handle the state update, 
             first bring variables into scope  *)
         iModIntro. iIntros (e2 s2 efs baseStep) "lc".
         (* inversion on the base step *)
         inversion baseStep. subst ; simpl.
-        iMod (saved_pred_alloc_cofinite L (interp t rho) DfracDiscarded) as "[%l (%lfresh & #typ)]"; try done.
+        (* allocated read only saved predicate *)
+        iMod (saved_pred_alloc_cofinite (list_to_set L) (interp t rho) DfracDiscarded) as "[%l (%lfresh & #typ)]"; try done.
+        assert (l ∉ L) as lfresh'. { rewrite elem_of_list_to_set in lfresh. exact lfresh. }
 
-        iApply fupd_frame_l; iSplit ; try done.
-        iApply fupd_frame_l; iSplitL "A".
-        (* ah, the view camera for the bijection is a bit more annoying
-            need to be careful how those resources are split 
-        
-            Should be doable.. just more annoying
-            *)
-         Admitted.
+        assert (∀ b' : gname, (fresh s1, b') ∉ (combine s1 L)) as c1. {
+            intros. apply not_in_combine_left. 
+            apply infinite_is_fresh.
+        } 
 
+        assert (∀ a' : loc, (a', l) ∉ (combine s1 L)) as c2. {
+            intros. apply not_in_combine_right. exact lfresh'.
+        }        
+        iPoseProof (gset_bij_own_extend (fresh s1) l c1 c2 with "A") as ">(auth & #view)".
+        pose proof (@adjust_combine s1 L (fresh s1) l (infinite_is_fresh s1) lfresh') as adjustment.
+        iModIntro.
+        iSplit. done.
+        iSplit. {
+            iExists (l :: L). iSplit. {
+                rewrite adjustment.
+                done.
+            }
+            { 
+                rewrite big_opL_cons.
+                - iSplit.  iExists (interp t rho). iApply "typ".
+                iApply "B".
+            }
+        }
+        iExists (fresh s1). iExists l.
+        iSplit. 2:{ done. }
+        iSplit. done.
+        done.
+    Qed.
 
-    (* with the weakes precondition in hand, this is easy *)
+    (*  this returns the updated authoritative element AND a new view element *)
+    (*  better library functions for gset_bij
+     https://plv.mpi-sws.org/coqdoc/iris/iris.base_logic.lib.gset_bij.html *)
+      
+
+    (* with the weakest precondition in hand, this is easy *)
     Lemma sem_typed_new Γ t :
         ⊢  Γ ⊨ (New t) : TCase t.
     Proof.
         iIntros (rho gamma) "!# #HG".
         iApply wp_wand.
-        iApply wp_new'.
+        iApply wp_new.
         iIntros (v) "[%l [%l' (B & P)]]".
         simpl.
-        iExists l. iExists l'. iSplit.
-        - iApply "P".
-        - iApply "B".
+        iExists l. iExists l'. iSplit; done.
     Qed.
 
     (* by induction on syntactic typing  *)
@@ -659,3 +656,296 @@ Module fund.
 
 
 End fund.
+
+(*     Check fresh.
+
+
+
+
+
+
+    (* proved, but not strong enough, 
+        need to mention the other location in bijection with l'
+        and that ⌜v = CaseV l⌝*)
+    Lemma wp_new t rho : 
+        ⊢ WP (New t) {{ v, ∃ l', l' ↦ (interp t rho)}}.
+    Proof.
+        iApply wp_lift_atomic_base_step_no_fork; auto.
+        iIntros (s1 n k1 k2 n') "[%L (A & #B)]".
+        (* get access to the state interpretation *)
+        unfold weakestpre.state_interp; simpl; unfold state_interp.
+        (* handle the fact that New is reducible first *)
+        iModIntro. iSplit.
+        - iPureIntro; unfold base_reducible; repeat eexists; eapply NewS.
+        (* now we need to handle the state update, 
+            first bring variables into scope  *)
+        -
+        iModIntro; iIntros (e2 s2 efs baseStep) "lc".
+        (* inversion on the base step *)
+        inversion baseStep; subst ; simpl.
+        (* here we allocate a new predicate representing the typing of t *)
+        iMod (saved_pred_alloc_cofinite (list_to_set L) (interp t rho) DfracDiscarded) as "[%l (%lfresh & typ)]"; try done.
+        assert (l ∉ L). { rewrite elem_of_list_to_set in lfresh. exact lfresh. }
+        (* Now we just have to show that the state interpretation is preserved
+          and that we have a location pointing to a predicate representing typing of t
+            which we just allocated *)
+        (* no forks *)
+        iApply fupd_frame_l; iSplit ; try done.
+        (* prove the WP post condition with "typ" *)
+        iApply fupd_frame_r; iSplit. 2: { iExists l; iApply "typ". }
+        (* Trickier part, showing that the state interpretation is preserved
+            here we have to update our bijection of fresh names
+            we have two new names "fresh s1" and "l"
+            and we need to update the saved predicate map wit our newly allocated predicate
+         *)
+        iExists (l :: L).
+        (* update the saved predicate map *)
+        iApply fupd_frame_r. iSplit. 2: {
+            rewrite big_opL_cons.
+            - iSplit.  iExists (interp t rho). iApply "typ".
+            iApply "B".
+        }
+        (* show update the name bijection.
+            Note: this seems to be a newer camera in Iris and is missing some useful lemmas
+            Clean this up and add to their library
+         *)
+        (* first step, show that "(fresh s1, l)" is a new element of (combine s1 L) *)
+
+        Check gset_bij_auth_extend (fresh s1) l.
+        assert (∀ a' : loc, (a', l) ∉ (combine s1 L)). {
+            intros. apply not_in_combine_right. exact H0.
+        }        
+        assert (∀ b' : gname, (fresh s1, b') ∉ (combine s1 L)). {
+            intros. apply not_in_combine_left. 
+            apply infinite_is_fresh.
+        } 
+        (* now we can derive a valid update ~~> *) 
+        pose proof (gset_bij_auth_extend (fresh s1)l H2 H1).
+        (* fix the update target with the correct set *)
+        rewrite (@adjust_combine s1 L (fresh s1) l (infinite_is_fresh s1) H0) in H3.
+        (* Finally.. with the update in hand, we can update the cell "new_set" *) 
+(*         iMod (own_update name_set _ _ H3 with "A") as "goal".
+        done. *)
+    
+    
+
+(*     Lemma viewfinder a b a' b': ⊢
+        own name_set (gset_bij_auth (DfracOwn 1) {[ (a , b) ; (a' , b')]}) ==∗  
+        own name_set (op (gset_bij_auth (DfracOwn 1) {[ (a , b) ; (a' , b')]}) (gset_bij_elem a' b')).
+    Proof.
+        iIntros "H".
+        unfold gset_bij_auth. unfold gset_bij_elem.
+
+Check  gset_bij_own_extend.
+    Lemma viewfinder a b a' b': ⊢
+        own name_set (gset_bij_auth (DfracOwn 1) {[ (a , b) ; (a' , b')]}) ==∗  
+        own name_set (gset_bij_elem a' b').
+        (* own name_set (●V {[(a, b); (a', b')]} ⋅ ◯V {[(a, b); (a', b')]})
+            --------------------------------------∗
+            |==> own name_set (◯V {[(a', b')]}) *)
+    Proof.
+        iIntros "H".
+        unfold gset_bij_auth. unfold gset_bij_elem.
+        Check own_op.
+        Check view_update_dealloc _ _ _ _ _ .
+        Check own_update name_set _ _  (view_update_dealloc _  _ _ _ _).
+        iMod (own_update name_set _ _  (view_update_dealloc _  _ _ _ _)).
+        iApply (own_op name_set with "H") .
+        Check own_op name_set _ _(_ : own name_set (●V {[(a, b); (a', b')]} ⋅ ◯V {[(a, b); (a', b')]})).
+        iMod (own_op name_set _ _ with "H") as "huh".  *)
+
+
+
+    Lemma gset_bijective_extend'        
+        (A : gset loc)
+        (B : gset loc) a b :
+        gset_bijective (gset_cprod A B) →
+        a ∉ A ->
+        b ∉ B ->
+        (∀ b', (a, b') ∉ (gset_cprod (A ∪ {[a]}) (B ∪ {[b]}))) →
+        (∀ a', (a', b) ∉ (gset_cprod (A ∪ {[a]}) (B ∪ {[b]}))) →
+        gset_bijective (gset_cprod (A ∪ {[a]}) (B ∪ {[b]})).
+    Proof. rewrite /gset_bijective. set_solver. Qed.
+
+        Section gset_bij_view_rel.
+            Context `{Countable A, Countable B}.
+            Implicit Types (bijL : gset (A * B)) (L : gsetUR (A * B)).
+            Local Lemma gset_bij_view_rel_iff n bijL L :
+            gset_bij_view_rel n bijL L ↔ L ⊆ bijL ∧ gset_bijective bijL.
+          Proof. done. Qed.
+        End  gset_bij_view_rel.
+
+
+    Lemma gset_bij_auth_extend (A : gset loc) (B : gset loc) a b :
+        gset_bijective (gset_cprod A B) →
+        a ∉ A ->
+        b ∉ B ->
+        gset_bij_auth (DfracOwn 1) (gset_cprod A B) ~~> gset_bij_auth (DfracOwn 1) (gset_cprod (A ∪ {[a]}) (B ∪ {[b]})).
+    Proof.
+        intros.
+        apply view_update. intros.
+
+        rewrite gset_bij_view_rel_iff.
+
+ *)
+
+
+  (*   Lemma modifyBijection 
+        (A : gset loc)
+        (B : gset loc)
+        (a' b' : loc)
+        (afresh : a' ∉ A)
+        (bfresh : b' ∉ B)
+        (H : gset_bijective ({[(a', b')]} ∪ gset_cprod A B)) : 
+        gset_bijective (gset_cprod (A ∪ {[a']}) (B ∪ {[b']})).
+    Proof.
+        set (S := gset_cprod A B) in *.
+        set (S1 := {[(a', b')]} ∪ S) in *.
+        set (S2 := gset_cprod (A ∪ {[a']}) (B ∪ {[b']})) in *.
+        (* The original set S is A * B 
+        *)
+        assert ((a', b')  ∈ S1) by set_solver.
+        assert ((a', b')  ∈ S2) by set_solver.
+        assert (gset_bijective S). {
+            eapply subseteq_gset_bijective.
+            exact H.
+            set_solver.
+        }
+        apply gset_bijective_extend'.
+        exact H2.
+        exact afresh.
+        exact bfresh.
+        - unfold not. intros b'' Hb''. 
+        (* case on b'' in B *)
+        apply elem_of_gset_cprod in Hb''; simpl in Hb''; destruct Hb''.
+        
+
+        destruct (decide ((a', b'') ∈ S1)).
+        {
+            Check gset_bijective_eq_iff S1 a' a' b' b'' H H0 e.
+            apply elem_of_gset_cprod in Hb''; simpl in Hb''; destruct Hb''.
+
+
+        }
+
+        (* determine if an arbitrary element, (a,b), of S2 is in S
+            If it is, '
+                then use the bijeciton of S
+            else
+                either (a = a') or (b = b') by elem_of_gset_cprod
+                then what..? use the bijection on S1?
+        *)
+        unfold gset_bijective; intros.
+        destruct (decide ((a, b) ∈ S)).
+        - split. {
+            (* on b 
+                if b'' is in B, 
+                    then b'' = b via bijection on S
+                else
+                    b'' = b' 
+                    which is not in S
+            *)
+            intros b'' Hb''.
+            destruct (decide (b'' ∈ B)).
+            {
+                assert ((a, b'') ∈ S). {
+                    set_solver.
+                }
+                pose proof (gset_bijective_eq_iff S a a b'' b H2  H4 e).
+                rewrite <-H5. reflexivity. 
+            }
+            (* b'' = b' ... so what *)
+            apply elem_of_gset_cprod in Hb''; simpl in Hb''.
+            assert (b'' = b'). { set_solver. } subst.
+            apply elem_of_gset_cprod in e; simpl in e. destruct e.
+            apply elem_of_gset_cprod in H3; simpl in H3.
+
+        }
+
+
+
+        (* we have a bijection on S and S1  
+          Either an arbitrary element (a,b) of S2 is in S or it 
+        *)
+        unfold gset_bijective.
+
+
+
+        (* we have to define the bijection.. on any arbitrary pair (a,b) in S2 *)
+        intros.
+        (* S1 is a subset of S2
+        Decide if the arbitrary element (a,b) of S2 is in S1
+        If it is, just use the bijection in S1 *)
+        destruct (decide ((a, b) ∈ S1)).
+        - (* if it is in S1, just use S1's bijection *)
+        split. 
+        + intros b'' Hb''.
+        (* is b'' could be in B or {[b']} .. case on this *)
+        destruct (decide (b'' = b')). 
+        {
+            (* b'' = b  then we use the bijection in S*)
+        } 
+        Check gset_bijective_eq_iff S1.
+        epose proof (gset_bijective_eq_iff S1 a a' b b' H e H0).
+
+        (* then we have two goals.. the proof for both will be similar.. so start with one *)
+        split.
+        - (* for b in (a , b) in S2... consider if it is the fresh element b' or not *)
+        intros b'' Hb''.
+        destruct (decide (b'' = b')).
+        + subst.  
+        (* if it is the fresh element. we want to associate it with a' 
+            so apply the fact that S1 := {[(a', b')]} ∪ S  is bijective "in reverse"
+
+        *)
+        pose proof (H a' b' H0) as (d ,_).
+        specialize d with b. symmetry. apply d.
+
+        + subst.
+
+        apply elem_of_gset_cprod in H3; simpl in H3.
+        - intros b'' Hb''.
+        destruct (decide (b = b')).
+        + subst. unfold gset_bijective in H.
+        pose proof (H a' b' H0). 
+        destruct H4.
+        apply H4.
+        
+         apply H with (a := a')(b := b'). exact H0. 
+
+
+
+        unfold gset_bijective in *.
+        intros.
+        split.
+        - intros b'' Hb''.
+        apply elem_of_gset_cprod  in H0; simpl in H0;
+        apply elem_of_gset_cprod  in Hb'' ; simpl in Hb''.
+        pose proof (prf a' b').
+        assert ((a', b) ∈ {[(a', b')]} ∪ gset_cprod A B) by set_solver.
+        apply H1 in H2. destruct H2. pose proof (H2 b'').
+        apply H4.
+
+        instantiate 
+        set_solver.
+        eapply subseteq_gset_bijective.
+
+        set (S1 := gset_cprod A B) in *.
+        set (S2 := {[(a', b')]} ∪ S1).
+        assert (gset_bijective S2). {
+            apply gset_bijective_extend.
+            exact prf.
+        }
+
+   (*      remember (fresh A) as a' in *.
+        remember (fresh B) as b' in *. *)
+
+(*         set (S1 := gset_cprod A B) in *.
+        set (S2 := {[(a', b')]} ∪ S1). *)
+        Check is_fresh a'.
+        unfold gset_bijective in *. set_solver.
+        apply subseteq_gset_bijective with S2.
+
+        set ((a'b' : gset (loc * loc  )):= {[(a' , b')]}) in *. 
+        
+ *)

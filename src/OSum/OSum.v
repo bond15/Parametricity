@@ -315,7 +315,7 @@ Qed.
     | IfCtx e1 e2 => If e e1 e2
     end.
 
-  Definition state : Type := gset loc.
+  Definition state : Type := list loc.
 
   Inductive base_step : expr → state → list Empty_set → expr → state → list expr → Prop :=
   (* Lam-β *)
@@ -371,7 +371,7 @@ Qed.
         e4 σ []
 
   | NewS t s :    
-    base_step (New t) s [] (Case (fresh s)) (s ∪ {[fresh s]}) [].
+    base_step (New t) s [] (Case (fresh s)) (fresh s :: s) [].
 
 
   (** Basic properties about the language *)

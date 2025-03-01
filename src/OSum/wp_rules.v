@@ -5,42 +5,18 @@ From iris.base_logic Require Export invariants saved_prop .
 From iris.algebra Require Import gset gmap big_op gset_bij.
 From iris.proofmode Require Import proofmode.
 From iris.prelude Require Import options.
+From iris.base_logic.lib Require Import ghost_map gset_bij.
+
 
 Require Import Autosubst.Autosubst.
 
 From MyProject.src.OSum Require Export persistent_pred OSum.
 
-Class logrelSig  Σ := Resources {
-    invariants : invGS Σ;
-    predicates :: savedPredG Σ val ;
-    names :: inG Σ (gset_bijUR loc loc) ;
-    name_set : gname
-}.
 
-Definition D `{logrelSig Σ}:= persistent_pred val (iProp Σ).
-
-Definition state_interp `{logrelSig Σ} (s : gset loc) : iProp Σ :=
-    ∃ (s' : gset loc ) , 
-        own name_set (gset_bij_auth (DfracOwn 1) (gset_cprod s s')) ∗
-        [∗ set] l' ∈ s', (∃ (P : D), saved_pred_own l' (DfracDiscarded) P).
-
-(* not true.. the core of gset_bij_auth disallows this 
-Global Instance state_interp_persist `{logrelSig Σ} (s : gset loc) : Persistent (state_interp s).
-Proof.
-    unfold Persistent.
-Abort. *)
-
-Global Instance OSum_irisGS `{logrelSig Σ} : irisGS OSum_lang Σ := {
-    iris_invGS := invariants;
-    num_laters_per_step _ := 0;
-    state_interp s  _ _ _ := state_interp s;(* gen_heap_interp s; *)
-    fork_post _ := True%I;
-    state_interp_mono _ _ _ _ := fupd_intro _ _
-}.
 
 Section lang_rules.
-    Context `{logrelSig Σ}.
-
+(*     Context `{logrelSig Σ}.
+ *)
     (*  All of the following is adopted from 
         A Logical Approach to Type Soundndess 
         
@@ -143,10 +119,10 @@ Section lang_rules.
             - reflexivity.
         }
         intros.
-        inversion H0 ; subst.
+        inversion H ; subst.
         { repeat (try split ; try reflexivity). } 
         exfalso.
-        pose proof (H12 eq_refl). done.
+        pose proof (H11 eq_refl). done.
     Qed.
 
     Global Instance wp_case_nomatch l l' `{!AsVal e2} (e3 e4 : expr)  : 
@@ -160,8 +136,8 @@ Section lang_rules.
             - exact ll.
         }
         intros.
-        inversion H0. 
-        { repeat (try split ; try reflexivity). exfalso. pose proof (ll H12). done. } 
+        inversion H. 
+        { repeat (try split ; try reflexivity). exfalso. pose proof (ll H11). done. } 
          repeat (try split ; try reflexivity).
     Qed.
 
