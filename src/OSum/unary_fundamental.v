@@ -11,7 +11,6 @@ From Equations Require Import Equations.
 
 From MyProject.src.OSum Require Export OSum unary_logrel.
 
-
 Fixpoint env_subst (vs : list val) : var → expr :=
 match vs with
 | [] => ids
