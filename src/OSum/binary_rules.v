@@ -66,13 +66,165 @@ Section cfg.
         (* two assignments to own config_name *)
         Check prod_included.
         iCombine "Hown He" gives "%fo".
+        apply auth_both_valid_discrete in fo as [hm hmm].
+        Check prod_included.
+        apply prod_included in hm as [foo _]. simpl in foo. 
+        Check singleton_included_l {[0 := Excl ei']} 0 (Excl (fill K e)).
+        apply singleton_included_l in foo as [e'' [f g]].
+        Check lookup_singleton.
+        rewrite lookup_singleton in f.
+        rewrite -f in g.
+        apply Excl_included in g.
+        Check own_update_2.
+        unfold spec_inv.
+        iModIntro.
+        iSplitL "Hown".
+        {
+         iModIntro.
+         iExists ei' , si'.
+         iSplit. done. done.   
+        }
+        iModIntro.
+
     Admitted.
 
     Lemma do_step_pure E  K e e' `{!PureExec True 1 e e'}:
         nclose specN ⊆ E →
         spec_ctx ∗ ⤇ fill K e ={E}=∗ ⤇ fill K e'.
     Proof. by eapply step_pure'; last eauto. Qed.
-    
+
+    Lemma do_step_new E K t : 
+        nclose specN ⊆ E →
+        spec_ctx ∗ ⤇ fill K (New t) ={E}=∗ ∃ s : list loc ,
+        own config_name  (◯ ({[0 := Excl (fill K (Case (fresh s)))]}, {[fresh s]})).
+    Proof.
+        iIntros (?) "[#Hsctx Hexe]".
+        (* Recall definition of spec_ctx
+            spec_ctx := (∃ e s, inv specN (spec_inv e s))%I.
+        *)
+        iDestruct "Hsctx" as (ei si) "Hspec".
+        (* Recall definition of spec_inv
+           
+            Definition spec_inv (e : expr)(s : state) : iProp Σ := 
+                (∃ e' s', 
+                    own config_name (● ({[ 0 := Excl e']} , (list_to_set s')))
+                    ∗ ⌜rtc erased_step ([e],s) ([e'],s')⌝)
+
+            There is some future expression e' and program state s'
+            such that configuration (e',s') is reachable by (e,s)
+        
+            Open the invariant
+        *)
+        iInv specN as ">[%ei' [%si' [Hown %Hrtc]]]".
+        (* By opening the invariant, 
+        We obtain the following data
+            (e',s')
+            rtc erased_step ([ei], si) ([ei'], si')
+            own config_name (● ({[0 := Excl ei']}, list_to_set si'))
+
+            since we have fill K (New t) as an assumption
+                we know that e' is equal to (fill K (New t))
+                This is proved with iCombine 
+                and properties of the involved cameras
+
+        in addition to showing the original goal
+            ∃ s : list loc ,
+                own config_name  
+                    (◯ ({[0 := Excl (fill K (Case (fresh s)))]}, {[fresh s]}))
+
+        we must also restablish the invariant namely 
+            Definition spec_inv (e : expr)(s : state) : iProp Σ := 
+                (∃ e' s', 
+                    own config_name (● ({[ 0 := Excl e']} , (list_to_set s')))
+                    ∗ ⌜rtc erased_step ([e],s) ([e'],s')⌝)
+
+        What we want to do here is chose a new e' and s'
+            namely (fill K (Case (fresh s'))), {[fresh s']} union s'
+
+        Show that we can reduce to this new configuration
+        Additionally, we need to update the resources
+        
+        *)
+        (* first, establish the fact that e' = fill K (New t) *)
+            rewrite /spec_ctx /tpool_pointsto.
+        iCombine "Hown Hexe" gives
+        %[[Htpj _]%prod_included ?]
+            %auth_both_valid_discrete.
+        simpl in Htpj.
+        apply singleton_included_l in Htpj as [e'' [f g]].
+        Check lookup_singleton.
+        rewrite lookup_singleton in f.
+        rewrite -f in g.
+        apply Excl_included in g. symmetry in g.
+        assert (ei' = fill K (New t)) by done; subst.
+        (* Now we have e' = fill K (New t)  and 
+        
+            "Hexe" : own config_name 
+                        (◯ ({[0 := Excl (fill K (New t))]}, ∅))    
+            "Hown" : own config_name 
+                        (● ({[0 := Excl (fill K (New t))]}, list_to_set s'))
+
+            Lets first demonstrate that we can step to (fill K (Case (fresh s')))
+                given that we have
+                    rtc erased_step (e, s) (fill K (New t), s')
+                    and we can base step
+                        (New t) ~~> (Case (fresh s'))
+        *)
+        assert (rtc (@erased_step OSum_lang) ([ei],si)([fill K (Case (fresh si'))], (fresh si') :: si')) as Hrtc'.
+        {
+            eapply rtc_r. exact Hrtc.
+            exists [].
+            apply (@step_atomic OSum_lang _ [] _  (fill K (New t)) si' (fill K (Case (fresh si')))(fresh si' :: si')[] [] []); try done.
+            econstructor; try done.
+            apply (NewS t si').
+        }
+        (* Now we need to update the authoritative element of the configuration
+        to reflect our new choice of e' and s' *)
+
+        iMod (own_update_2 with "Hown Hexe") as "[Hown Hexe]".
+        {
+            apply (auth_update _ _ 
+                (<[0 := Excl (fill K (Case (fresh si')))]> {[0 := Excl (fill K (New t))]}, list_to_set (fresh si' :: si'))
+                ({[0 := Excl (fill K (Case (fresh si')))]}, {[fresh si']})) .
+            apply prod_local_update' ; simpl.
+            (* first update the program expression  *)
+        {
+                eapply singleton_local_update.
+                {
+                    rewrite lookup_singleton. done.
+                }
+                eapply exclusive_local_update. done.
+            }
+            (* now update the program state *)
+    (*         apply gset_disj_alloc_op_local_update.
+            eapply gset_local_update. *)
+            unfold local_update. simpl.
+            intros.
+            split; try done.
+            rewrite H3. 
+            destruct mz ; simpl ; set_solver.
+        }
+        (* Now we can reestablish the spec invariant *)
+        iModIntro.
+        iSplitL "Hown".
+        {
+            iModIntro.
+            (* Choose our new reachable configuration *)
+            iExists (fill K (Case (fresh si'))) , (fresh si' :: si').
+            iSplit.
+            - (* Show the updated resources *)
+            iApply "Hown".
+            - (* and that this new config is reachable *)
+            iPureIntro.
+            exact Hrtc'.
+        }
+        (* With the invariant reestablished, 
+            now we can now show our "post condition"  *)
+        iModIntro.
+        iExists si'.
+        iApply "Hexe".
+    Qed.
+
     Lemma step_fst E  K e1 v1 e2 v2 :
         to_val e1 = Some v1 → 
         to_val e2 = Some v2 → 
