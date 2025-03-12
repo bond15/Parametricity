@@ -1,12 +1,11 @@
 From stdpp Require Import base gmap coPset tactics proof_irrel sets.
 
-From iris.base_logic Require Import invariants iprop upred saved_prop gen_heap.
+From iris.base_logic Require Import base_logic invariants iprop upred saved_prop gen_heap.
 From iris.base_logic.lib Require Import ghost_map gset_bij.
 From iris.algebra Require Import cofe_solver gset gmap_view excl gset_bij.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import weakestpre ectx_lifting ectx_language.
 Require Import Autosubst.Autosubst.
-
 
 From MyProject.src.OSum Require Export OSum binary_logrel binary_rules.
 
@@ -221,15 +220,36 @@ Section fundamental.
         iApply (interp_expr_bind' [InjRCtx _] [InjRCtx _]).
         {iApply "He". }
         iIntros ([ev1 ev2]) "#Hev".
-        (* we have values *)
-        iApply (interp_expr_val (InjV _ _, InjV _ _)).
-        (* break apart our assumptions on the pair or cases and pair of e:t  *)
+        (* open the invariant *)
+        iIntros (K') "Hj /=".
         iDestruct "Hcv" as "[%l [%l' [%Heqcase Hinv]]]"; fold interp in *; inversion Heqcase; subst.
-(*         iDestruct "Hinv" as "[limp [lspec point]]".
- *)     unfold case_inv in *.   
-        iExists l , l' , ev1 , ev2, (interp t rho).
-        repeat iSplit ; try done.
+
+        (* So we can open the invariant *)
+        iApply fupd_wp.
+        (* performing a lookup..? *)
+        iInv (logN .@ (l,l')) as "[%l'' [#>d [#>e #f]]]".
+        
+        (* show the invariant still holds, it does because we didnt
+         modify it *)
+        iModIntro.
+        simpl.
+        iSplit.
+        - iNext. unfold case_inv. unfold pointsto_def. simpl.
+        iExists l''. repeat iSplit ; try done.
+        -
+        (* now prove the Wp *)
+        iModIntro.
+        iApply wp_value.
+        iExists (InjV (CaseV l') ev2).
+        iSplit.
+        iApply "Hj".
+        iExists l , l' , ev1 ,ev2 ,(interp t rho).
+        repeat iSplit; try done.
+        iNext.
+        iExists l''.
+        repeat iSplit; try done.
     Qed.
+
 
 (*         (* break apart out assumptions on the pair or cases and pair of e:t  *)
         iDestruct "Hcv" as "[%l [%l' [%Heqcase Hinv]]]"; fold interp in * ;inversion Heqcase; subst.
@@ -266,17 +286,24 @@ Section fundamental.
         { iApply "Hc". } 
         iIntros ([cv1 cv2]) "#Hcv".
         (* use the value relation data for osum *)
-        iDestruct "Hov" as "[%l1 [%l1' [%ov1' [%ov2' [%R [%Heq [[%l3 [nbij1 [rbij1 pred1]]] Rel]]]]]]]".
+        iDestruct "Hov" as "[%l1 [%l1' [%ov1' [%ov2' [%R [%Heq [[%l3 [>nbij1 [>rbij1 pred1]]] Rel]]]]]]]".
         inversion Heq. subst. 
         (* use the value relation data for case *)
         iDestruct "Hcv" as "[%l2 [%l2' [%Hceq Cinv]]]". fold interp in *.
         inversion Hceq. subst.
         (* destruct the case invariant *)
   (*       iDestruct "Cinv" as "[#l2in [#l2'in [%l3' [nbij2 [rbij2 pred2]]]]]". *)
-        iDestruct "Cinv" as "[%l3' [nbij2 [rbij2 pred2]]]". 
-    
+(*         iDestruct "Cinv" as "[%l3' [nbij2 [rbij2 pred2]]]". 
+ *)    
         iIntros (K') "Hspec'".
-        simpl.
+        iApply fupd_wp.
+        iInv (logN.@(l2, l2')) as "[%l3' [>#nbij2 [>#rbij2 #pred2]]]".
+        (* prove invariant still holds. *)
+        iModIntro.
+        iSplit.
+        {iExists l3'. repeat iSplit ; try done. }
+        iModIntro.
+
 
         destruct (decide (l1 = l2)) as [|Hneq]. subst.
         {
@@ -295,17 +322,26 @@ Section fundamental.
                 apply to_of_val.
             }
             { eauto. }
+            
             iApply wp_pure_step_later; try done.
-            iIntros "!> _".
+            iNext. 
+            iIntros "lc".
             asimpl.
             iSpecialize ("Htru" $! rho ((ov1' , ov2') :: ws)).
-            iAssert (⟦ t1 :: Γ ⟧* rho ((ov1', ov2') :: ws))%I as "Hext".
+
+            iAssert (▷ ⟦ t1 :: Γ ⟧* rho ((ov1', ov2') :: ws))%I  as "Hext".
             - iApply interp_env_cons.
             iSplit.
-            + iRewrite -"baz". iApply "Rel".
+            + iNext. iRewrite -"baz". iApply "Rel".
             + iApply "Hgam".
-            - iSpecialize ("Htru"  with "[Hs Hext]").
-            + iSplit. iApply "Hs". iApply "Hext".
+            -
+            (* Use the later credit *)
+            iAssert (£ 1 -∗ ▷ ⟦ t1 :: Γ ⟧* rho ((ov1', ov2') :: ws) ={⊤}=∗ ⟦ t1 :: Γ ⟧* rho ((ov1', ov2') :: ws))%I as "credit".
+            { iApply lc_fupd_elim_later. } 
+            iPoseProof ("credit" with "lc Hext") as ">yes". 
+
+            iSpecialize ("Htru"  with "[Hs yes]").
+            + iSplit. iApply "Hs". done. 
             + asimpl.
             iApply "Htru". simpl.
             iApply "yosh".

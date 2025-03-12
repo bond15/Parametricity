@@ -22,6 +22,7 @@ Class relStore  Σ  := RelStore {
     resources :: RelationResources Σ ; 
     rel_bij : gname ;
     name_bij : gname; 
+    name_set : gname
 }.
 
 Class logrelSig Σ := LogRelSig {
@@ -35,12 +36,14 @@ Definition combine {A}{B}`{Countable (A * B)}(l : list A)(l' : list B) : gset (A
 Definition D `{ts : !relStore Σ}:= persistent_pred (val * val) (iProp Σ).
 
 Definition state_interp  `{relStore Σ}`{configSpec Σ}(s : list loc) : iProp Σ :=
+    own name_set (● (list_to_set s)).
+(*     
     ∃ (s' s'' : list loc ) , 
 (*         own config_name (◯ (empty, list_to_set s')) ∗
  *)        gset_bij_own_auth name_bij (DfracOwn 1) (combine s s') ∗
         gset_bij_own_auth rel_bij (DfracOwn 1) (combine (zip s s') s'') ∗
         [∗ list] l ∈ s'', (∃ (P : D), saved_pred_own l (DfracDiscarded) P).
-(*     ∀ (s' : list loc), gset_bij_own_auth name_bij (DfracOwn 1) (combine s s') -∗
+     ∀ (s' : list loc), gset_bij_own_auth name_bij (DfracOwn 1) (combine s s') -∗
     ∃ (s'' : list loc ) ,         
         gset_bij_own_auth rel_bij (DfracOwn 1) (combine (zip s s') s'') ∗
         [∗ list] l ∈ s'', (∃ (P : D), saved_pred_own l (DfracDiscarded) P). *)
@@ -123,8 +126,9 @@ Section binary_logrel.
         λne rho, PersPred(fun w => 
             ∃ (l l' : loc), 
                 ⌜w = (CaseV l , CaseV l')⌝ ∧
-                (case_inv l l' (interp rho)))%I.
-                (* can I get away with not using inv here? *)
+                inv (logN .@ (l,l')) (case_inv l l' (interp rho)))%I.
+(*                 (case_inv l l' (interp rho)))%I.
+ *)                (* can I get away with not using inv here? *)
 (*                 inv (logN .@ (l,l')) (case_inv l l' (interp rho)))%I.
  *)    Next Obligation. Admitted.
 
@@ -132,7 +136,7 @@ Section binary_logrel.
         λne rho, PersPred(fun w => 
             ∃ (l l' : loc)(v1 v2 : val)(R : D),
                 ⌜w = (InjV (CaseV l) v1 , InjV (CaseV l') v2)⌝ ∧
-                l @ l' ↦□ R ∧
+                ▷ l @ l' ↦□ R ∧
                 R (v1 ,v2))%I.
 
     Program Definition interp_TArrow (interp1 interp2 : VRel) : VRel :=
