@@ -225,7 +225,8 @@ Section fundamental.
         iApply (interp_expr_val (InjV _ _, InjV _ _)).
         (* break apart our assumptions on the pair or cases and pair of e:t  *)
         iDestruct "Hcv" as "[%l [%l' [%Heqcase Hinv]]]"; fold interp in *; inversion Heqcase; subst.
-        iDestruct "Hinv" as "[limp [lspec point]]".
+(*         iDestruct "Hinv" as "[limp [lspec point]]".
+ *)     unfold case_inv in *.   
         iExists l , l' , ev1 , ev2, (interp t rho).
         repeat iSplit ; try done.
     Qed.
@@ -271,8 +272,8 @@ Section fundamental.
         iDestruct "Hcv" as "[%l2 [%l2' [%Hceq Cinv]]]". fold interp in *.
         inversion Hceq. subst.
         (* destruct the case invariant *)
-        iDestruct "Cinv" as "[#l2in [#l2'in [%l3' [nbij2 [rbij2 pred2]]]]]".
-
+  (*       iDestruct "Cinv" as "[#l2in [#l2'in [%l3' [nbij2 [rbij2 pred2]]]]]". *)
+        iDestruct "Cinv" as "[%l3' [nbij2 [rbij2 pred2]]]". 
     
         iIntros (K') "Hspec'".
         simpl.
@@ -342,8 +343,9 @@ Section fundamental.
     instead be an invariant on the locations
     *)
     Lemma wp_new t  : 
-        ⊢ WP (New t) {{ v, ∃ l , ⌜v = CaseV l⌝ ∗ own name_set (◯ (singleton l))}}.
+        ⊢ WP (New t) {{ v, ∃ l (s s' : list loc), ⌜v = CaseV l⌝ ∗ gset_bij_own_elem name_bij (fresh s) (fresh s') }}.
     Proof.
+        Check inv_alloc.
         iApply wp_lift_atomic_base_step_no_fork; auto;  simpl.
         iIntros (s1 _ k1  _ _) "ownS". 
                     (* get access to the state interpretation *)
@@ -357,10 +359,12 @@ Section fundamental.
             first bring variables into scope  *)
         iModIntro. iIntros (e2 s2 efs baseStep) "lc".
         (* inversion on the base step *)
-        inversion baseStep. subst ; simpl.
+        inversion baseStep. subst. 
+        
+(*         simpl. 
         iApply fupd_frame_l.
         iSplit; try done.
-        iApply fupd_frame_r.
+        iApply fupd_frame_r. *)
     Admitted.
  (*        iSplit.
         2:{ iExists (fresh s1). done. }
@@ -379,6 +383,81 @@ Section fundamental.
     Proof.
         iIntros (rho ws) "!#(#Hs & #Hgam)".
         iIntros (K) "Hspec".
+(*         iDestruct "Hs" as (ei si) "Hs".
+        iInv specN as ">[%ei' [%si' [Hown %Hrtc]]]"; simpl.
+
+        iApply wp_wand.
+        iApply wp_new.
+        iIntros.
+        simpl.
+        simpl.
+        iMod (do_step_new with "[Hspec]") as "[%sspec Hspec]".
+        { done. }
+        { iSplit; done. }
+        iDestruct "Hs" as (ei si) "Hs".
+        iInv specN as ">[%ei' [%si' [Hown %Hrtc]]]".
+ *)
+
+
+        unfold case_inv. unfold pointsto_def. simpl.
+
+        iApply wp_lift_atomic_base_step_no_fork; auto; simpl.
+        iIntros (s _ k1  _ _) "ownS". 
+                    (* get access to the state interpretation *)
+        unfold binary_logrel.state_interp; simpl; unfold state_interp.
+        (* handle the fact that New is reducible first *)
+        iModIntro. iSplit.
+        - iPureIntro; unfold base_reducible; repeat eexists; eapply NewS.
+        (* only obligation is that we need to be able to summon a fresh name *)
+    (*         exact (is_fresh s1).
+    *)      - (* now we need to handle the state update, 
+            first bring variables into scope  *)
+        iModIntro. iIntros (e2 s2 efs baseStep) "lc".
+        (* inversion on the base step *)
+        inversion baseStep. subst.
+
+        iSplitR ; try done.
+        iMod (do_step_new with "[Hspec]") as "[%sspec Hspec]".
+        { done. }
+        { iSplit; done. }
+        iDestruct "ownS" as "[%s' [%s'' [d e]]]". simpl.
+        iSplitR "Hspec".
+        2:{
+            iModIntro.
+            iExists (CaseV (fresh sspec)). simpl.
+            iSplit.
+            + admit.
+            + iExists (fresh s), (fresh sspec).
+            iSplit; try done.
+            unfold case_inv.
+            unfold pointsto_def. simpl.
+            admit.
+         }
+        iModIntro.
+        iExists (fresh s' :: s) ,s''.
+        iSplitL.
+        +
+        iExists ((fresh sspec) :: sspec) , s'.
+        iSplitL.
+        * iApply auth_own_mono.
+
+
+        iCombine "Hspec" "d" gives "%what".
+        simpl in what.
+
+
+        iModIntro.
+        iSplitL.
+        iExists ((fresh sspec) :: sspec).
+        iSplit.
+        iApply fupd_frame_l.
+        iSplitL.
+        + iIntros (s') "Hbij".
+
+   
+        simpl.
+
+
         asimpl.
         iApply wp_wand.
         iApply wp_new.

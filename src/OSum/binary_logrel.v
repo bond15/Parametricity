@@ -22,7 +22,6 @@ Class relStore  Σ  := RelStore {
     resources :: RelationResources Σ ; 
     rel_bij : gname ;
     name_bij : gname; 
-    name_set : gname;
 }.
 
 Class logrelSig Σ := LogRelSig {
@@ -30,18 +29,37 @@ Class logrelSig Σ := LogRelSig {
     store :: relStore  Σ ;
 }.
 
+Definition combine {A}{B}`{Countable (A * B)}(l : list A)(l' : list B) : gset (A * B) := 
+    list_to_set (zip l l').
+
 Definition D `{ts : !relStore Σ}:= persistent_pred (val * val) (iProp Σ).
 
-Definition state_interp  `{ts : !relStore Σ}(s : list loc) : iProp Σ :=
-    own name_set (● (list_to_set s)).
+Definition state_interp  `{relStore Σ}`{configSpec Σ}(s : list loc) : iProp Σ :=
+    ∃ (s' s'' : list loc ) , 
+(*         own config_name (◯ (empty, list_to_set s')) ∗
+ *)        gset_bij_own_auth name_bij (DfracOwn 1) (combine s s') ∗
+        gset_bij_own_auth rel_bij (DfracOwn 1) (combine (zip s s') s'') ∗
+        [∗ list] l ∈ s'', (∃ (P : D), saved_pred_own l (DfracDiscarded) P).
+(*     ∀ (s' : list loc), gset_bij_own_auth name_bij (DfracOwn 1) (combine s s') -∗
+    ∃ (s'' : list loc ) ,         
+        gset_bij_own_auth rel_bij (DfracOwn 1) (combine (zip s s') s'') ∗
+        [∗ list] l ∈ s'', (∃ (P : D), saved_pred_own l (DfracDiscarded) P). *)
 
-Definition state_elem `{ts : !relStore Σ} (l : loc) : iProp Σ :=
+(*     ∃ (s' s'' : list loc ) , 
+        gset_bij_own_auth name_bij (DfracOwn 1) (combine s s') ∗
+        gset_bij_own_auth rel_bij (DfracOwn 1) (combine (zip s s') s'') ∗
+        [∗ list] l ∈ s'', (∃ (P : D), saved_pred_own l (DfracDiscarded) P).
+        *)
+
+(*     own name_set (● (list_to_set s)). *)
+
+(* Definition state_elem `{ts : !relStore Σ} (l : loc) : iProp Σ :=
     own name_set (◯ (singleton l)).
 
-Notation "l ∈i" := (state_elem l) (at level 20) : bi_scope.
+Notation "l ∈i" := (state_elem l) (at level 20) : bi_scope. *)
 
 
-Global Instance OSum_irisGS `{logrelSig Σ} : irisGS OSum_lang Σ := {
+Global Instance OSum_irisGS `{logrelSig Σ}`{configSpec Σ} : irisGS OSum_lang Σ := {
     iris_invGS := invariants;
     num_laters_per_step _ := 0;
     state_interp s  _ _ _ := state_interp s;
@@ -97,8 +115,8 @@ Section binary_logrel.
     Solve Obligations with solve_proper.
 
     Definition case_inv (l l' : loc)(R : D): iProp Σ := 
-        state_elem l ∧
-        spec_state_elem l' ∧ 
+(*         state_elem l ∧
+        spec_state_elem l' ∧  *)
         l @ l' ↦□ R.
 
     Program Definition interp_TCase (interp : VRel) : VRel := 
