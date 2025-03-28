@@ -101,7 +101,7 @@ Definition D `{ts : !relStore Σ}:= persistent_pred (val * val) (iProp Σ).
 
 Definition state_interp  `{relStore Σ}`{configSpec Σ}(s : list loc) : iProp Σ :=
     ∃ (s' s'': list loc ) , 
-        own config_name (◯ (empty, list_to_set s')) ∗
+        own config_name (◯ (None, list_to_set s')) ∗
         gset_bij_own_auth name_bij (DfracOwn 1) (combine s s') ∗
         gset_bij_own_auth rel_bij (DfracOwn 1) (combine (zip s s') s'') ∗
         [∗ list] l ∈ s'', (∃ (P : D), saved_pred_own l (DfracDiscarded) P).

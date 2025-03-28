@@ -2,7 +2,7 @@ From stdpp Require Import base gmap coPset tactics proof_irrel sets.
 
 From iris.base_logic Require Import base_logic invariants iprop upred saved_prop gen_heap.
 From iris.base_logic.lib Require Import ghost_map gset_bij.
-From iris.algebra Require Import cofe_solver gset gmap_view excl gset_bij.
+From iris.algebra Require Import cmra cofe_solver gset gmap_view excl gset_bij.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import weakestpre ectx_lifting ectx_language.
 Require Import Autosubst.Autosubst.
@@ -412,6 +412,61 @@ Section fundamental.
         iApply own_update.
         Check own_update. *)
 
+
+    Definition myres (a : cmra): ucmra := authUR (excl' a).
+
+    (* shit wtf...  *)
+    Lemma try {A : cmra}(x : A): (● (Excl' x)) ~~> (● (Excl' x)) ⋅ (◯ (Excl' x)) .
+    Proof.
+        Check excl_validN_inv_l.
+        apply auth_update_alloc .
+        unfold local_update.
+        intros;  simpl in *.
+        try split ; try done.
+        Disable Notation Excl'.
+        Disable Notation ExclBot'.
+        unfold ε in *.
+        unfold option_unit_instance in *.
+        (* mz must be equal to Some, else H2 is false *)
+        destruct mz.
+        2:{
+            simpl in H2. exfalso.
+            inversion H2.
+         }
+        simpl in *.
+        (* c must be equal to Some (Excl x) or H2 is false *)
+        assert (c ≡{n}≡ Some (Excl x)).
+        {
+            inversion H2.
+            subst.
+            destruct c.
+            { inversion H4. subst. done. }
+
+            inversion H4.
+        }
+        rewrite H3 in H2.
+        rewrite H3.
+        (* here's the issue... *)
+        assert (Some (Excl x) ⋅ Some (Excl x) = Some (ExclBot)) by done.
+        rewrite H4.
+        constructor.
+        (* Excl x ≡{n}≡ ExclBot .... *)
+    Abort.
+
+    Enable Notation Excl'.
+    Enable Notation ExclBot'.
+
+    
+    Lemma try (b : bool)(g : gname)`{inG Σ (viewR auth_view_rel)} :  (own g ((● (Excl' b)) ⋅ (◯ (Excl' b)))) -∗ False.
+    Proof.
+        iIntros "H".
+        Check own_op.
+        Check own_valid.
+        iPoseProof (own_valid with "H") as "%yikes".
+        (* hmm this seems ok ..? *)
+    Abort.
+
+(*     ● ◯ *)
     
     Lemma bin_log_rel_new Γ t : 
         ⊢ Γ ⊨ New t ≤log≤ New t : TCase t.
@@ -454,7 +509,13 @@ Section fundamental.
         inversion baseStep. subst.
 
         iSplitR ; try done.
-        Search from_option. simpl in *.
+        (* Goal at this point is
+            - update the logical state
+            - show state interpretation invariant still holds
+            - prove the WP condition
+         *)
+
+        simpl in *.
 
         (*  *)
         iDestruct "ownS" as "[%s' [%s'' [cfg  [nbij [rbij preds]]]]]".
@@ -468,18 +529,17 @@ Section fundamental.
             %auth_both_valid_discrete.
         simpl in *.
         (*  *)
-        Check {[0 := Excl (fill K (New t))]}.
-        assert ({[0 := Excl (fill K (New t))]} ⋅ ∅ = ({[0 := Excl (fill K (New t))]} : spec_thread)).
-        {
-            set_solver.
-        }
-        rewrite H2.
-        rewrite H2 in Htpj.
-        apply singleton_included_l in Htpj as [e'' [f g]].
+        assert (Excl' (fill K (New t)) ⋅ None = (Excl' (fill K (New t)) : spec_thread)) as eqexpr by done.
+        rewrite eqexpr.
+        rewrite eqexpr in Htpj.
+        clear eqexpr.
+
+(*         apply singleton_included_l in Htpj as [e'' [f g]].
         Check lookup_singleton.
         rewrite lookup_singleton in f.
         rewrite -f in g.
-        apply Excl_included in g. symmetry in g.
+        apply Excl_included in g. symmetry in g. *)
+        apply Excl_included in Htpj.
         assert (ei' = fill K (New t)) by done; subst.
         (* perform a step in the spec *)
         assert (rtc (@erased_step OSum_lang) ([ei],si)([fill K (Case (fresh si'))], (fresh si') :: si')) as Hrtc'.
@@ -493,122 +553,63 @@ Section fundamental.
         (* Now we need to update the authoritative element of the configuration
         to reflect our new choice of e' and s' *)
 
-        iMod (own_update_2 with "Hown cfgv") as "[Hauth _]".
+        (* can I just drop the list in the view here ...? *)
+
+        iMod (own_update_2 with "Hown cfgv") as "[Hauth what]".
         {
-            apply (auth_update _ _ 
-                (<[0 := Excl (fill K (Case (fresh si')))]> {[0 := Excl (fill K (New t))]}, list_to_set (fresh si' :: si'))
-                ({[0 := Excl (fill K (Case (fresh si')))]}, list_to_set (fresh si' :: si'))) .
-            apply prod_local_update' ; simpl.
+            Check auth_update.
+            apply auth_update with 
+                (a' := (Excl' (fill K (Case (fresh si'))) : spec_thread, list_to_set (fresh si' :: si')))
+                (b' := (Excl' (fill K (Case (fresh si'))) : spec_thread, list_to_set (fresh si' :: si'))).
+            apply prod_local_update'; simpl.
+            apply option_local_update.
+            eapply exclusive_local_update ; try done.
             (* first update the program expression  *)
-        {
-                eapply singleton_local_update.
-                {
-                    rewrite lookup_singleton. done.
-                }
-                eapply exclusive_local_update. done.
+            apply gset_local_update. set_solver.
+         }
+
+        (* create the view for the state interpretation *)
+        set cfg := (Excl' (fill K (Case (fresh si'))) : spec_thread, list_to_set (fresh si' :: si')).
+        assert (● cfg ~~> ● cfg ⋅ ◯ (None, list_to_set (fresh si' :: s'))). {
+            apply auth_update_alloc.
+            apply prod_local_update_2.
+    
+
+            unfold local_update.
+            intros. simpl in *.
+            split.
+            done.
+            destruct mz.
+            {
+                assert (c = {[fresh si']} ∪ list_to_set si').
+                set_solver.
+                subst.
+                set_solver.
             }
-            (* now update the program state *)
-    (*         apply gset_disj_alloc_op_local_update.
-            eapply gset_local_update. *)
-            unfold local_update. simpl.
-            intros.
-            split; try done.
-            rewrite H4. 
-            destruct mz ; simpl ; set_solver.
+            exfalso.
+            set_solver.
+                (* apply gset_local_update. set_solver. *)
         }
-        assert ({[0 := Excl (fill K (Case (fresh si'))); 0 := Excl (fill K (New t))]} = ({[0 := Excl (fill K (Case (fresh si')))]} : spec_thread)).
-        {
+
+        iPoseProof (own_update config_name _ _ H2 with "Hauth") as ">Hauth".
+        iPoseProof (own_op config_name _ _ with "Hauth") as "[Hauth Hviewstate]".
+        
+        assert (◯ cfg ~~> ◯ ( Excl' (fill K (Case (fresh si'))) , empty)). {
+            apply view_update_frag.
+            intros.
+            unfold auth_view_rel. simpl. unfold auth_view_rel_raw.
+            unfold auth_view_rel in H3. simpl in H3. unfold auth_view_rel_raw in H3.
+            destruct H3.
+            split. 2:{ done. }
+            eapply cmra_includedN_trans.
+            2:{ exact H3. }
+            apply cmra_monoN_r.
+            apply prod_includedN. simpl.
+            split . done.
             set_solver.
         }
-        rewrite H3.
-        clear H3.
-        (* create the view for the state interpretation *)
-        set cfg := ({[0 := Excl (fill K (Case (fresh si')))]}, list_to_set (fresh si' :: si')).
-        Check (auth_update_alloc cfg cfg (empty, list_to_set (fresh si' :: si'))).
-        assert (● cfg ~~> ● cfg ⋅ ◯ (empty, list_to_set (fresh si' :: s'))). {
-            apply auth_update_alloc.
-            apply prod_local_update'; simpl.
-            2:{
-                unfold local_update.
-                intros. simpl in *.
-                split.
-                done.
-                destruct mz.
-                {
-                    assert (c = {[fresh si']} ∪ list_to_set si').
-                    set_solver.
-                    subst.
-                    set_solver.
-                }
-                exfalso.
-                set_solver.
-                (* apply gset_local_update. set_solver. *)
-            }
-            apply gmap_local_update.
-            intros.
-            destruct (decide (0 = i)) .
-            { 
-                subst.
-                rewrite lookup_singleton.
-                done.
-(*                 eapply exclusive_local_update. done.
- *)            }
-            pose proof (lookup_singleton_ne 0 i (Excl (fill K (Case (fresh si')))) n).
-            rewrite H3. done. 
-        }
-        iPoseProof (own_update config_name _ _ H3 with "Hauth") as ">Hauth".
-        iPoseProof (own_op config_name _ _ with "Hauth") as "[Hauth Hviewstate]".
+        iPoseProof (own_update _ _ _ H3 with "what") as ">Hviewexpr".
 
-        (* create the view for the WP post condition *)
-        assert (● cfg ~~> ● cfg ⋅ ◯ ({[0 := Excl (fill K (Case (fresh si')))]}, empty)). {
-            apply auth_update_alloc.
-            apply prod_local_update'; simpl.
-        {
-            apply gmap_local_update.
-            intros.
-            destruct (decide (0 = i)).
-            {
-                subst.
-                rewrite lookup_singleton.
-                unfold local_update.
-                intros. simpl in *.
-                split.
-                done.
-                rewrite lookup_empty in H5.
-                destruct mz.
-                {
-                    simpl in H5.
-                    destruct c.
-                    {
-                        
-                    }
-                }
-                simpl in H5.
-                unfold opM in H5.
-                repeat red in H5. 
-                set exp := Excl' (fill K (Case (fresh si'))).
-                destruct mz.
-                {
-                    simpl.
-                    destruct c.
-                    {
-                        rewrite 
-                    simpl in H5.
-                       compute.   
-                    }
-                }
-                destruct (mz = Some (Some (excl'  exp))).
-(*                 eapply exclusive_local_update. done.
- *)            }
-            pose proof (lookup_singleton_ne 0 i (Excl (fill K (Case (fresh si')))) n).
-            rewrite H4.
-            done.
-        }
-        done.
-        }
-
-        iPoseProof (own_update config_name _ _ H4 with "Hauth") as ">Hauth".
-        iPoseProof (own_op config_name _ _ with "Hauth") as "[Hauth Hviewexpr]".
 
 
         (* Now we can reestablish the spec invariant *)
@@ -678,27 +679,23 @@ Section fundamental.
         pose proof (adjust_combine (fresh s , fresh si') lp pairfresh lpfresh) as rbijadjust.
 
         (* all the data is there, now time to dispatch the state interpretation *)
-        Check inv_alloc.
-(*         iMod (inv_alloc (logN.@(l, l')))
- *)        Check fupd_frame_l ⊤ ⊤ .
-
-        Check fupd_frame_l.
-        Check inv_alloc.
+ 
 
         iSplitL "Hviewstate nbijauth rbijauth preds npred".
         {
             iModIntro.
             iExists (fresh si' :: s'), (lp :: s'').
-            iSplit. done.
+            iSplit. iApply "Hviewstate". 
             iSplitL "nbijauth".
             { rewrite -nbijadjust. done. }
             iSplitL "rbijauth".
             { rewrite -rbijadjust. done. }
             rewrite big_opL_cons.
             iSplit.
-            - iExists (interp t rho); done.
+            - iExists (interp t rho); iApply "npred".
             - done.
         }
+
 
         (* now to prove the Wp post condition *)
         iExists (CaseV (fresh si')).
@@ -706,7 +703,7 @@ Section fundamental.
         unfold case_inv.
         unfold pointsto_def.
         simpl.
-        iSplitL "Hviewexpr"; try done.
+        iSplitL "Hviewexpr". { iModIntro. iApply "Hviewexpr". }
  
         iExists (fresh s) , (fresh si').
         clear.
@@ -715,6 +712,7 @@ Section fundamental.
         iModIntro.
         iExists lp.
         repeat try iSplit ; try done.
+    Qed.
 
         Unshelve.
         unfold Exclusive.

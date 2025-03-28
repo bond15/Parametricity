@@ -32,7 +32,11 @@ Definition specN := nroot .@ "spec".
 
 Definition D `{Σ : gFunctors}:= persistent_pred (val * val) (iProp Σ).
 
-Definition spec_thread : ucmra := gmapUR nat (exclR exprO).
+Check optionUR.
+Check excl' expr.
+Print excl'.
+Definition spec_thread : ucmra := optionUR (exclR expr).
+(*  gmapUR nat (exclR exprO). *)
 
 Definition configRA : cmra := prodUR spec_thread (gsetUR loc).
 
@@ -41,23 +45,24 @@ Class configSpec Σ := CS {
 (*     spec_predicates :: savedPredG Σ (val * val) ;
  *)    config_name : gname
 }.
+Check excl' expr.
 
 Check authR.
 Section definitionsS.
     Context `{configSpec Σ, invGS Σ}.
 
     Definition spec_inv (e : expr)(s : state) : iProp Σ := 
-        (∃ e' s', own config_name (● ({[ 0 := Excl e']} , (list_to_set s')))
+        (∃ e' s', own config_name (● (Excl' e' , (list_to_set s')))
                     ∗ ⌜rtc erased_step ([e],s) ([e'],s')⌝)%I.
 
     Definition spec_ctx : iProp Σ :=
         (∃ e s, inv specN (spec_inv e s))%I.
 
     Definition tpool_pointsto (e : expr) : iProp Σ :=
-        own config_name (◯ ({[ 0 := Excl e ]}, ∅)).
+        own config_name (◯ (Excl' e, ∅)).
     
     Definition spec_state_elem (l : loc) : iProp Σ :=
-        own config_name (◯ (empty, {[ l ]})).
+        own config_name (◯ (None, {[ l ]})).
 
     Global Instance spec_ctx_persistent : Persistent spec_ctx.
     Proof. apply _. Qed.
@@ -86,13 +91,14 @@ Section cfg.
         iCombine "Hown He" gives "%fo".
         apply auth_both_valid_discrete in fo as [hm hmm].
         Check prod_included.
-        apply prod_included in hm as [foo _]. simpl in foo. 
+(*         apply prod_included in hm as [foo _]. simpl in foo. 
         Check singleton_included_l {[0 := Excl ei']} 0 (Excl (fill K e)).
         apply singleton_included_l in foo as [e'' [f g]].
         Check lookup_singleton.
         rewrite lookup_singleton in f.
-        rewrite -f in g.
-        apply Excl_included in g.
+        rewrite -f in g. *)
+        apply prod_included in hm as [foo _]. simpl in *.
+        apply Excl_included in foo.
         Check own_update_2.
         unfold spec_inv.
         iModIntro.
@@ -118,7 +124,7 @@ Section cfg.
         nclose specN ⊆ E →
         spec_ctx ∗ ⤇ fill K (New t) ={E}=∗ ∃ s : list loc,
         own config_name  
-        (◯ ({[0 := Excl (fill K (Case (fresh s)))]}, list_to_set (fresh s :: s))).
+        (◯ (Excl' (fill K (Case (fresh s))), list_to_set (fresh s :: s))).
     Proof.
         iIntros (?) "[#Hsctx Hexe]".
         (* Recall definition of spec_ctx
@@ -173,11 +179,12 @@ Section cfg.
         %[[Htpj _]%prod_included ?]
             %auth_both_valid_discrete.
         simpl in Htpj.
-        apply singleton_included_l in Htpj as [e'' [f g]].
+        apply Excl_included in Htpj.
+(*         apply singleton_included_l in Htpj as [e'' [f g]].
         Check lookup_singleton.
         rewrite lookup_singleton in f.
         rewrite -f in g.
-        apply Excl_included in g. symmetry in g.
+        apply Excl_included in g. symmetry in g. *)
         assert (ei' = fill K (New t)) by done; subst.
         (* Now we have e' = fill K (New t)  and 
         
@@ -205,21 +212,32 @@ Section cfg.
 
         iMod (own_update_2 with "Hown Hexe") as "[Hauth Hview]".
         {
-            apply (auth_update _ _ 
+            apply auth_update with 
+                (a' := (Excl' (fill K (Case (fresh si'))), list_to_set (fresh si' :: si')))
+                (b' := (Excl' (fill K (Case (fresh si'))), list_to_set (fresh si' :: si'))).
+            apply prod_local_update'; simpl.
+            apply option_local_update.
+            eapply exclusive_local_update ; try done.
+            
+
+(*             Check auth_update _ _ (Excl' (fill K (Case (fresh si')))).
+            apply (auth_update.
+ (*            apply (auth_update _ _ 
                 (<[0 := Excl (fill K (Case (fresh si')))]> {[0 := Excl (fill K (New t))]}, list_to_set (fresh si' :: si'))
-                ({[0 := Excl (fill K (Case (fresh si')))]}, list_to_set (fresh si' :: si'))) .
+                ({[0 := Excl (fill K (Case (fresh si')))]}, list_to_set (fresh si' :: si'))) . *)
             apply prod_local_update' ; simpl.
             (* first update the program expression  *)
         {
-                eapply singleton_local_update.
+            eapply exclusive_local_update. done.
+(*                 eapply singleton_local_update.
                 {
                     rewrite lookup_singleton. done.
-                }
+                } *)
                 eapply exclusive_local_update. done.
             }
             (* now update the program state *)
     (*         apply gset_disj_alloc_op_local_update.
-            eapply gset_local_update. *)
+            eapply gset_local_update. *) *)
             unfold local_update. simpl.
             intros.
             split; try done.
@@ -250,7 +268,7 @@ Section cfg.
     Lemma uhg E K (s s' : list loc) :
     nclose specN ⊆ E →
     spec_ctx ∗
-        own config_name (● ({[0 := Excl (fill K (Case (fresh s)))]}, list_to_set s')) ={E}=∗
+        own config_name (● (Excl' (fill K (Case (fresh s))), list_to_set s')) ={E}=∗
         False %I.
     (*     own config_name (● ({[0 := Excl (fill K (Case (fresh s)))]}, union ({[fresh s]}) (list_to_set s))).
     *) Proof.
