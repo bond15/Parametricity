@@ -365,167 +365,103 @@ Section fundamental.
         iApply "yosh".
     Qed.
 
-    (*  In the unary version.. I have the authoritative element of the 
-    bijection given from the state interpretation.. 
-    
-    Which .. seems fine in the unary case
-    but in the binary case, the state interpretation including the 
-    authoritative element of the bijection is positing
-    the existence of a separate executeion whos program state is 
-    in bijection with the currently running program..
+    Check subset.
 
-    Maybe this is a misuse of the state interpretation and it should
-    instead be an invariant on the locations
-    *)
-    Lemma wp_new t  : 
-        ⊢ WP (New t) {{ v, ∃ l (s s' : list loc), ⌜v = CaseV l⌝ ∗ gset_bij_own_elem name_bij (fresh s) (fresh s') }}.
+    Lemma views (e : expr)(s s' : gsetUR loc)(p : s ⊆ s') :
+        own config_name (● (Excl' e , s') ⋅ ◯ (Excl' e , s')) ==∗ 
+        own config_name (● (Excl' e , s')) ∗
+        own config_name (◯ (None , s)) ∗
+        own config_name (◯ (Excl' e , empty)) .
     Proof.
-        Check inv_alloc.
-        iApply wp_lift_atomic_base_step_no_fork; auto;  simpl.
-        iIntros (s1 _ k1  _ _) "[%es [%s' ownS]]". 
-                    (* get access to the state interpretation *)
-        unfold binary_logrel.state_interp; simpl; unfold state_interp.
-        (* handle the fact that New is reducible first *)
-        iModIntro. iSplit.
-        - iPureIntro; unfold base_reducible; repeat eexists; eapply NewS.
-        (* only obligation is that we need to be able to summon a fresh name *)
-    (*         exact (is_fresh s1).
-    *)      - (* now we need to handle the state update, 
-            first bring variables into scope  *)
-        iModIntro. iIntros (e2 s2 efs baseStep) "lc".
-        (* inversion on the base step *)
-        inversion baseStep. subst. 
-        
-(*         simpl. 
-        iApply fupd_frame_l.
-        iSplit; try done.
-        iApply fupd_frame_r. *)
-    Admitted.
- (*        iSplit.
-        2:{ iExists (fresh s1). done. }
-        iMod (own_update with "[ownS]") as "goal".
-        2:{ iApply "ownS". }
-        { 
-            red.
-        } 
-        Check auth_update.
-        iApply own_update.
-        Check own_update. *)
-
-
-    Definition myres (a : cmra): ucmra := authUR (excl' a).
-
-    (* shit wtf...  *)
-    Lemma try {A : cmra}(x : A): (● (Excl' x)) ~~> (● (Excl' x)) ⋅ (◯ (Excl' x)) .
-    Proof.
-        Check excl_validN_inv_l.
-        apply auth_update_alloc .
-        unfold local_update.
-        intros;  simpl in *.
-        try split ; try done.
-        Disable Notation Excl'.
-        Disable Notation ExclBot'.
-        unfold ε in *.
-        unfold option_unit_instance in *.
-        (* mz must be equal to Some, else H2 is false *)
-        destruct mz.
-        2:{
-            simpl in H2. exfalso.
-            inversion H2.
-         }
-        simpl in *.
-        (* c must be equal to Some (Excl x) or H2 is false *)
-        assert (c ≡{n}≡ Some (Excl x)).
-        {
-            inversion H2.
-            subst.
-            destruct c.
-            { inversion H4. subst. done. }
-
-            inversion H4.
+        iIntros "[Hauth Hview]".
+        (* create the view for the expression *)
+        assert (● (Excl' e , s') ~~> ● (Excl' e , s') ⋅ ◯ (None, s')). {
+            apply auth_update_alloc.
+            apply prod_local_update_2.
+            apply gset_local_update. done.
         }
-        rewrite H3 in H2.
-        rewrite H3.
-        (* here's the issue... *)
-        assert (Some (Excl x) ⋅ Some (Excl x) = Some (ExclBot)) by done.
-        rewrite H4.
-        constructor.
-        (* Excl x ≡{n}≡ ExclBot .... *)
-    Abort.
 
-    Enable Notation Excl'.
-    Enable Notation ExclBot'.
+        assert (◯ (None, s') ~~> ◯ (None : spec_thread, s)). {
+            apply view_update_frag.
+            intros.
+            destruct H2.
+            split.
+            2 :{ done. }
+            eapply cmra_includedN_trans.
+            2 :{ exact H2. }
+            apply cmra_monoN_r.
+            apply prod_includedN; simpl.
+            split. try done.
+            set_solver.
+        }
+        (* create the view for the state *)
+        assert (◯ (Excl' e , s') ~~> ◯ (Excl' e, empty)). {
+            apply view_update_frag.
+            intros.
+            destruct H3.
+            split.
+            2:{ done. }
+            eapply cmra_includedN_trans.
+            2:{ exact H3. }
+            apply cmra_monoN_r.
+            apply prod_includedN. simpl.
+            split . done.
+            set_solver.
+        }
+        iPoseProof (own_update config_name _ _ H1 with "Hauth") as ">[Hauth Hview1]".
+        iPoseProof (own_update config_name _ _ H3 with "Hview") as ">Hview2".
+        iPoseProof (own_update config_name _ _ H2 with "Hview1") as ">Hview1".
+        iModIntro.
+        iSplitL "Hauth" ; try done.
+        iSplitL "Hview1"; done.
+    Qed.
 
-    
-    Lemma try (b : bool)(g : gname)`{inG Σ (viewR auth_view_rel)} :  (own g ((● (Excl' b)) ⋅ (◯ (Excl' b)))) -∗ False.
-    Proof.
-        iIntros "H".
-        Check own_op.
-        Check own_valid.
-        iPoseProof (own_valid with "H") as "%yikes".
-        (* hmm this seems ok ..? *)
-    Abort.
 
-(*     ● ◯ *)
-    
+
     Lemma bin_log_rel_new Γ t : 
         ⊢ Γ ⊨ New t ≤log≤ New t : TCase t.
     Proof.
         iIntros (rho ws) "!#(#Hs & #Hgam)".
         iIntros (K) "Hspec". 
-       
-(*         iDestruct "Hs" as (ei si) "Hs".
-        iInv specN as ">[%ei' [%si' [Hown %Hrtc]]]"; simpl.
-
-        iApply wp_wand.
-        iApply wp_new.
-        iIntros.
-        simpl.
-        simpl.
-        iMod (do_step_new with "[Hspec]") as "[%sspec Hspec]".
-        { done. }
-        { iSplit; done. }
-        iDestruct "Hs" as (ei si) "Hs".
-        iInv specN as ">[%ei' [%si' [Hown %Hrtc]]]".
- *)
-
-
-(*         simpl. unfold case_inv. unfold pointsto_def. simpl.
- *)
+        (* step 1: take a step in the implementation *)
         iApply wp_lift_atomic_base_step_no_fork.
-        { done. } (* auto; simpl. *)
+        { done. }
         iIntros (s n1 k1 k2 n2) "ownS". 
-                    (* get access to the state interpretation *)
-(*         unfold binary_logrel.state_interp; simpl; unfold state_interp.
- *)        (* handle the fact that New is reducible first *)
         iModIntro. iSplit.
-        - iPureIntro; unfold base_reducible; repeat eexists; eapply NewS.
-        (* only obligation is that we need to be able to summon a fresh name *)
-    (*         exact (is_fresh s1).
-    *)      - (* now we need to handle the state update, 
-            first bring variables into scope  *)
+        { iPureIntro; unfold base_reducible; repeat eexists; eapply NewS. }
         iModIntro. iIntros (e2 s2 efs baseStep) "lc".
-        (* inversion on the base step *)
-        inversion baseStep. subst.
-
-        iSplitR ; try done.
+        inversion baseStep; subst; iSplitR ; try done; simpl in *; clear.
         (* Goal at this point is
-            - update the logical state
-            - show state interpretation invariant still holds
-            - prove the WP condition
-         *)
+            - 2: take a specification step
+            - 3: update the specification invariant
+            - 4: update the logical state
+            - 5: show state interpretation invariant still holds
+            - 6: prove the WP condition, relational interpretation of Case
+        *)
 
-        simpl in *.
-
-        (*  *)
+        (* Step 2: take a specification step *)
+        (* break open all the data in the state interpretation and the spec_ctx invariant *)
         iDestruct "ownS" as "[%s' [%s'' [cfg  [nbij [rbij preds]]]]]".
         iDestruct "Hs" as "[%ei [%si inv]]".
         iInv specN as ">[%ei' [%si' [Hown %Hrtc]]]".
 
-         iCombine "Hspec" "cfg" as "cfgv".
- (*         iCombine "Hown" "cfgv" as "new".
- *)      iCombine "Hown cfgv" gives
-        %[[Htpj huh]%prod_included ?]
+        (* 
+            From the spec invariant, we know
+                own config_name (● (Excl' ei', list_to_set si'))
+
+            From the state interpretation, we know
+                own config_name (◯ (None, list_to_set s'))
+
+            From the definition of expression relation, we know
+                ⤇ fill K (New t) 
+                or
+                own config_name (◯ (Excl' (fill K (New t)), empty)
+
+            combine all this information 
+         *)
+        iCombine "Hspec" "cfg" as "cfgv".
+        iCombine "Hown cfgv" gives
+        %[[Htpj Hslt]%prod_included ?]
             %auth_both_valid_discrete.
         simpl in *.
         (*  *)
@@ -533,15 +469,25 @@ Section fundamental.
         rewrite eqexpr.
         rewrite eqexpr in Htpj.
         clear eqexpr.
-
-(*         apply singleton_included_l in Htpj as [e'' [f g]].
-        Check lookup_singleton.
-        rewrite lookup_singleton in f.
-        rewrite -f in g.
-        apply Excl_included in g. symmetry in g. *)
         apply Excl_included in Htpj.
         assert (ei' = fill K (New t)) by done; subst.
-        (* perform a step in the spec *)
+        (* 
+            Now we have
+                own config_name (● (Excl' (fill K (New t)), list_to_set si'))
+                own config_name (◯ (Excl' (fill K (New t)), list_to_set s'))
+                list_to_set s' ≼ list_to_set si'
+
+            importantly, "ei'", the expression held by the spec is equal to "fill K (New t)"
+            and 
+            "s' ≼ si'" 
+                where "s'" := the state held by the state interpretation 
+                      "si'":= the state held by the spec 
+
+
+            Now that we know the authoritative element of the spec config,
+            we can take an execution step.
+        *)
+
         assert (rtc (@erased_step OSum_lang) ([ei],si)([fill K (Case (fresh si'))], (fresh si') :: si')) as Hrtc'.
         {
             eapply rtc_r. exact Hrtc.
@@ -550,69 +496,27 @@ Section fundamental.
             econstructor; try done.
             apply (NewS t si').
         }
-        (* Now we need to update the authoritative element of the configuration
-        to reflect our new choice of e' and s' *)
-
-        (* can I just drop the list in the view here ...? *)
-
-        iMod (own_update_2 with "Hown cfgv") as "[Hauth what]".
+        (* 
+            Now we need to update the authoritative element of the specification configuration
+            to reflect the fact that we have steped from 
+            (New t, si') to (Case (fresh si'), (fresh si') + si') *)
+        iMod (own_update_2 with "Hown cfgv") as "Hspec'".
         {
-            Check auth_update.
             apply auth_update with 
                 (a' := (Excl' (fill K (Case (fresh si'))) : spec_thread, list_to_set (fresh si' :: si')))
                 (b' := (Excl' (fill K (Case (fresh si'))) : spec_thread, list_to_set (fresh si' :: si'))).
             apply prod_local_update'; simpl.
             apply option_local_update.
             eapply exclusive_local_update ; try done.
-            (* first update the program expression  *)
             apply gset_local_update. set_solver.
-         }
-
-        (* create the view for the state interpretation *)
-        set cfg := (Excl' (fill K (Case (fresh si'))) : spec_thread, list_to_set (fresh si' :: si')).
-        assert (● cfg ~~> ● cfg ⋅ ◯ (None, list_to_set (fresh si' :: s'))). {
-            apply auth_update_alloc.
-            apply prod_local_update_2.
-    
-
-            unfold local_update.
-            intros. simpl in *.
-            split.
-            done.
-            destruct mz.
-            {
-                assert (c = {[fresh si']} ∪ list_to_set si').
-                set_solver.
-                subst.
-                set_solver.
-            }
-            exfalso.
-            set_solver.
-                (* apply gset_local_update. set_solver. *)
         }
 
-        iPoseProof (own_update config_name _ _ H2 with "Hauth") as ">Hauth".
-        iPoseProof (own_op config_name _ _ with "Hauth") as "[Hauth Hviewstate]".
-        
-        assert (◯ cfg ~~> ◯ ( Excl' (fill K (Case (fresh si'))) , empty)). {
-            apply view_update_frag.
-            intros.
-            unfold auth_view_rel. simpl. unfold auth_view_rel_raw.
-            unfold auth_view_rel in H3. simpl in H3. unfold auth_view_rel_raw in H3.
-            destruct H3.
-            split. 2:{ done. }
-            eapply cmra_includedN_trans.
-            2:{ exact H3. }
-            apply cmra_monoN_r.
-            apply prod_includedN. simpl.
-            split . done.
-            set_solver.
-        }
-        iPoseProof (own_update _ _ _ H3 with "what") as ">Hviewexpr".
+        (* We need to allocate a few views of the authoritative element to
+        satisfy the goals below *)
+        iPoseProof (views _ (list_to_set (fresh si' :: s')) (list_to_set (fresh si' :: si')) with "Hspec'") as ">[Hauth [Hviewstate Hviewexpr]]".
+        { set_solver. }
 
-
-
-        (* Now we can reestablish the spec invariant *)
+        (* Step 3 : restablish the specification invariant *)
         iModIntro.
         iSplitL "Hauth".
         {
@@ -626,8 +530,10 @@ Section fundamental.
             iPureIntro.
             exact Hrtc'.
         }
+        clear - Hslt.
+
+        (* Step 4: update the logical state *)
         unfold binary_logrel.state_interp.
-        Check gset_bij_own_extend.
 
         (* update the name bijection *)
         assert (forall b', (fresh s, b') ∉ (binary_logrel.combine s s')) as c1. {
@@ -639,7 +545,6 @@ Section fundamental.
             list_to_set s' ≼ list_to_set si'
         *)
         assert (fresh si' ∉ s') as sfresh. {
-            (* clear huh. see, removin the hypothesis is bad *)
             pose proof (infinite_is_fresh si').
             set_solver.
         }
@@ -653,11 +558,10 @@ Section fundamental.
         iPoseProof (gset_bij_own_extend (fresh s) (fresh si') c1 c2 with "nbij" ) as ">(nbijauth & nbijview)".
         pose proof (adjust_combine (fresh s) (fresh si') (infinite_is_fresh s) (sfresh)) as nbijadjust.
         (* allocate a new predicate  *)
-        Check saved_pred_alloc_cofinite.
         iMod (saved_pred_alloc_cofinite (list_to_set s'') (interp t rho) DfracDiscarded ) as "[%lp [%lpnotin #npred]]"; try done.
         assert (lp ∉ s'') as lpfresh. { rewrite elem_of_list_to_set in lpnotin. done. }
+       
         (* update the predicate bijection *)
-        Check not_in_combine_left.
         assert ((fresh s , fresh si') ∉ zip s s') as pairfresh . {
             unfold not.
             intros Hyp.
@@ -678,14 +582,13 @@ Section fundamental.
         iPoseProof (gset_bij_own_extend (fresh s , fresh si') lp c3 c4 with "rbij" ) as ">(rbijauth & rbijview)".
         pose proof (adjust_combine (fresh s , fresh si') lp pairfresh lpfresh) as rbijadjust.
 
-        (* all the data is there, now time to dispatch the state interpretation *)
+        (* step 5: show state interpretation invariant still holds *)
  
-
         iSplitL "Hviewstate nbijauth rbijauth preds npred".
         {
             iModIntro.
             iExists (fresh si' :: s'), (lp :: s'').
-            iSplit. iApply "Hviewstate". 
+            iSplit. iApply "Hviewstate".  
             iSplitL "nbijauth".
             { rewrite -nbijadjust. done. }
             iSplitL "rbijauth".
@@ -696,17 +599,11 @@ Section fundamental.
             - done.
         }
 
-
-        (* now to prove the Wp post condition *)
-        iExists (CaseV (fresh si')).
-
-        unfold case_inv.
-        unfold pointsto_def.
-        simpl.
-        iSplitL "Hviewexpr". { iModIntro. iApply "Hviewexpr". }
- 
-        iExists (fresh s) , (fresh si').
+        (* step 6: prove the WP condition, relational interpretation of Case *)
         clear.
+        iExists (CaseV (fresh si')).
+        iSplitL "Hviewexpr". { iModIntro. iApply "Hviewexpr". }
+        iExists (fresh s) , (fresh si').
         iSplitR; try done.
         iApply (inv_alloc).
         iModIntro.
