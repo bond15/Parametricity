@@ -30,13 +30,81 @@ Class logrelSig Σ := LogRelSig {
     store :: relStore  Σ ;
 }.
 
+
 Definition combine {A}{B}`{Countable (A * B)}(l : list A)(l' : list B) : gset (A * B) := 
     list_to_set (zip l l').
+
+
+    Lemma not_in_combine_left {A}{B}`{Countable (A * B)}(l1 : list A)(l2 : list B) a b : 
+    a ∉ l1 -> 
+    (a , b) ∉ combine l1 l2 .
+Proof.
+    unfold not. intros.
+    apply elem_of_list_to_set in H1.
+    apply elem_of_zip_l in H1.
+    apply H0. exact H1. 
+Qed.
+
+    Lemma not_in_combine_right {A}{B}`{Countable (A * B)}(l1 : list A)(l2 : list B) a b : 
+        b ∉ l2 -> 
+        (a , b) ∉ combine l1 l2 .
+    Proof.
+        unfold not. intros.
+        apply elem_of_list_to_set in H1.
+        apply elem_of_zip_r in H1.
+        apply H0. exact H1. 
+    Qed.
+
+    Lemma adjust_combine {A B}`{Countable (A * B)}{L1 L2} a b :
+        a ∉ L1 -> 
+        b ∉ L2 -> 
+        {[(a, b)]} ∪ combine L1 L2 = combine (a :: L1) (b :: L2).
+    Proof.
+        intros.
+        rewrite set_eq.
+        intros (a' , b').
+        split.
+        - intros. 
+        destruct (decide ((a , b) = (a' , b'))).
+        {
+            inversion e. subst.
+            apply elem_of_list_to_set.
+            rewrite (zip_with_app pair [a'] L1 [b'] L2 eq_refl).
+            constructor.
+        }
+         apply elem_of_list_to_set.
+        pose proof (zip_with_app pair [a] L1 [b] L2 eq_refl).
+        rewrite H3.
+        apply elem_of_list_further.
+        pose proof ( elem_of_union {[(a, b)]} (combine L1 L2) (a' , b')).
+        apply H4 in H2.
+        destruct H2.
+        +        assert ( (a , b) <> (a' , b')). {
+            unfold not. intros. inversion H5. apply n. done.
+        }
+        rewrite elem_of_singleton in H2. symmetry in H2. contradiction.
+        + unfold combine in H2.            
+         apply elem_of_list_to_set in H2. exact H2.
+        -
+        intros.
+        unfold combine in H2. apply elem_of_list_to_set in H2.
+        simpl in H2.
+        unfold combine.
+        Search list_to_set.
+        rewrite <- list_to_set_cons.
+        apply elem_of_list_to_set. exact H2.
+    Qed.
+
+
 
 Definition D `{ts : !relStore Σ}:= persistent_pred (val * val) (iProp Σ).
 
 Definition state_interp  `{relStore Σ}`{configSpec Σ}(s : list loc) : iProp Σ :=
-    own name_set (● (list_to_set s)).
+    ∃ (s' s'': list loc ) , 
+        own config_name (◯ (empty, list_to_set s')) ∗
+        gset_bij_own_auth name_bij (DfracOwn 1) (combine s s') ∗
+        gset_bij_own_auth rel_bij (DfracOwn 1) (combine (zip s s') s'') ∗
+        [∗ list] l ∈ s'', (∃ (P : D), saved_pred_own l (DfracDiscarded) P).
 (*     
     ∃ (s' s'' : list loc ) , 
 (*         own config_name (◯ (empty, list_to_set s')) ∗
@@ -130,7 +198,7 @@ Section binary_logrel.
 (*                 (case_inv l l' (interp rho)))%I.
  *)                (* can I get away with not using inv here? *)
 (*                 inv (logN .@ (l,l')) (case_inv l l' (interp rho)))%I.
- *)    Next Obligation. Admitted.
+ *)    Next Obligation.  Admitted.
 
     Definition interp_TOSum : VRel := 
         λne rho, PersPred(fun w => 

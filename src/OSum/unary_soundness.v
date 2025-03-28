@@ -114,11 +114,11 @@ Definition gen_ResΣ : gFunctors := #[savedPredΣ val ; gset_bijΣ loc loc].
 Global Instance subG_ResΣ {Σ} : subG gen_ResΣ Σ → RelationResources Σ.
 Proof. solve_inG. Qed.
 
-Example foo : sigT RelationResources .
+(* Example foo : sigT RelationResources .
 set (Σ' := #[gen_ResΣ ]).
 exists Σ'.
 apply _.
-Qed.
+Qed. *)
 
 Corollary type_soundness e τ  :
   [] ⊢ₜ e : τ → safe e.

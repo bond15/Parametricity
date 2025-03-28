@@ -10,6 +10,24 @@ Require Import Autosubst.Autosubst.
 
 From MyProject.src.OSum Require Export OSum persistent_pred wp_rules.
 
+Class testRes Σ := {
+    sets :: inG Σ (authR (gsetUR loc));
+    name : gname
+}.
+(* Section test.
+    Context `{testRes Σ}.
+
+    (* no.. if the authoritative element was in scope.. you might be able to show this
+    with two usages of 
+        Lemma view_frag_included p a b1 b2 :
+            ◯V b1 ≼ ●V{p} a ⋅ ◯V b2 ↔ b1 ≼ b2.
+    *)
+    Example ex s s' : own name (◯ s) ∗ own name (◯ s') -∗ ⌜s = s'⌝.
+    Proof.
+        iIntros "[os os']".
+        iCombine "os os'" as "foo". simpl.
+
+ *)
 Definition specN := nroot .@ "spec".
 
 Definition D `{Σ : gFunctors}:= persistent_pred (val * val) (iProp Σ).
@@ -93,10 +111,14 @@ Section cfg.
         spec_ctx ∗ ⤇ fill K e ={E}=∗ ⤇ fill K e'.
     Proof. by eapply step_pure'; last eauto. Qed.
 
+    (*  cant return auth ownership because 
+    that resource is needed to restore the invariant
+     *)
     Lemma do_step_new E K t : 
         nclose specN ⊆ E →
-        spec_ctx ∗ ⤇ fill K (New t) ={E}=∗ ∃ s : list loc ,
-        own config_name  (◯ ({[0 := Excl (fill K (Case (fresh s)))]}, {[fresh s]})).
+        spec_ctx ∗ ⤇ fill K (New t) ={E}=∗ ∃ s : list loc,
+        own config_name  
+        (◯ ({[0 := Excl (fill K (Case (fresh s)))]}, list_to_set (fresh s :: s))).
     Proof.
         iIntros (?) "[#Hsctx Hexe]".
         (* Recall definition of spec_ctx
@@ -146,7 +168,7 @@ Section cfg.
         
         *)
         (* first, establish the fact that e' = fill K (New t) *)
-            rewrite /spec_ctx /tpool_pointsto.
+            rewrite /spec_ctx /tpool_pointsto. 
         iCombine "Hown Hexe" gives
         %[[Htpj _]%prod_included ?]
             %auth_both_valid_discrete.
@@ -181,11 +203,11 @@ Section cfg.
         (* Now we need to update the authoritative element of the configuration
         to reflect our new choice of e' and s' *)
 
-        iMod (own_update_2 with "Hown Hexe") as "[Hown Hexe]".
+        iMod (own_update_2 with "Hown Hexe") as "[Hauth Hview]".
         {
             apply (auth_update _ _ 
                 (<[0 := Excl (fill K (Case (fresh si')))]> {[0 := Excl (fill K (New t))]}, list_to_set (fresh si' :: si'))
-                ({[0 := Excl (fill K (Case (fresh si')))]}, {[fresh si']})) .
+                ({[0 := Excl (fill K (Case (fresh si')))]}, list_to_set (fresh si' :: si'))) .
             apply prod_local_update' ; simpl.
             (* first update the program expression  *)
         {
@@ -206,14 +228,14 @@ Section cfg.
         }
         (* Now we can reestablish the spec invariant *)
         iModIntro.
-        iSplitL "Hown".
+        iSplitL "Hauth".
         {
             iModIntro.
             (* Choose our new reachable configuration *)
             iExists (fill K (Case (fresh si'))) , (fresh si' :: si').
             iSplit.
             - (* Show the updated resources *)
-            iApply "Hown".
+            iApply "Hauth".
             - (* and that this new config is reachable *)
             iPureIntro.
             exact Hrtc'.
@@ -222,8 +244,80 @@ Section cfg.
             now we can now show our "post condition"  *)
         iModIntro.
         iExists si'.
-        iApply "Hexe".
+        iApply "Hview".
     Qed.
+
+    Lemma uhg E K (s s' : list loc) :
+    nclose specN ⊆ E →
+    spec_ctx ∗
+        own config_name (● ({[0 := Excl (fill K (Case (fresh s)))]}, list_to_set s')) ={E}=∗
+        False %I.
+    (*     own config_name (● ({[0 := Excl (fill K (Case (fresh s)))]}, union ({[fresh s]}) (list_to_set s))).
+    *) Proof.
+        iIntros "%specN [#Hctx Hcfg]".
+        iDestruct "Hctx" as (ei si) "Hspec".
+        iInv "Hspec" as ">[%ei' [%si' [Hown %Hrtc]]]".
+
+        iCombine "Hown Hcfg" gives "%huh".
+        (*  BAD 
+            threading ownership of config state allows derivation of false 
+        *)
+        destruct huh. simpl in *.
+        apply dfrac_valid_own_r in H0.
+        exfalso.
+        done.
+    Qed.
+(*     
+        apply auth_auth_op_validN in huh.
+        apply auth_auth_dfrac_op_inv  in huh.
+        assert (ei' = (fill K (Case (fresh s)))).
+        {   
+           inversion huh. simpl in H0.
+           set_solver. 
+       }
+       assert ((list_to_set si') ≡ ((list_to_set s') : gset  loc)). {
+        inversion huh. apply H2.
+       }
+       iModIntro.
+       iSplitL "Hown".
+       - unfold spec_inv. iModIntro.
+       iExists ei' ,si'.
+       iSplit. done. done.
+       - (* just demonstrate that the state has to be a certain form *)
+
+       rewrite H0 in Hrtc.
+       apply rtc_inv_r in Hrtc.
+
+       inversion Hrtc.
+       + rewrite H4 in Hrtc. rewrite H5 in Hrtc.
+       apply rtc_inv_r in Hrtc as [none | ind].
+       {
+        admit.
+       }
+       d
+       apply erased_steps_nsteps in Hrtc as [n [ks stp]].
+       destruct stp.
+       { (* no steps taken *)
+
+        }
+       Print erased_step.
+       Print rtc. 
+       Check rtc_r.
+        admit.
+       +
+       -
+
+        rewrite -auth_auth_dfrac_op in huh.
+        gives
+        %[[Htpj _]%prod_included ?]
+            %auth_both_valid_discrete.
+        simpl in Htpj.
+        apply singleton_included_l in Htpj as [e'' [f g]].
+        Check lookup_singleton.
+        rewrite lookup_singleton in f.
+        rewrite -f in g.
+        apply Excl_included in g. symmetry in g.
+        assert (ei' = fill K (New t)) by done; subst. *)
 
     Lemma step_fst E  K e1 v1 e2 v2 :
         to_val e1 = Some v1 → 
