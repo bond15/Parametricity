@@ -1,38 +1,22 @@
-From iris.program_logic Require Export language ectx_language ectxi_language.
-From MyProject.src.SystemF Require Export base.
-From iris.algebra Require Export ofe.
-From stdpp Require Import gmap.
-From iris.prelude Require Import options.
+From Autosubst Require Export Autosubst.
 
+From stdpp Require Export base decidable.
 Module SysF.
 
-  Locate Decision.
-  Inductive binop := Add | Sub | Mult | Eq | Le | Lt.
-
-  Global Instance binop_dec_eq (op op' : binop) : Decision (op = op').
-  Proof. solve_decision. Defined.
 
   Inductive expr :=
   | Var (x : var)
   | App (e1 e2 : expr)
   | Lam (e : {bind expr})
-  | LetIn (e1 : expr) (e2 : {bind expr})
-  | Seq (e1 e2 : expr)
   (* Base Types *)
   | Unit
-  | Int (n : Z)
   | Bool (b : bool)
-  | BinOp (op : binop) (e1 e2 : expr)
   (* If then else *)
   | If (e0 e1 e2 : expr)
   (* Products *)
   | Pair (e1 e2 : expr)
   | Fst (e : expr)
   | Snd (e : expr)
-  (* Sums *)
-  | InjL (e : expr)
-  | InjR (e : expr)
-  | Case (e0 : expr) (e1 : {bind expr}) (e2 : {bind expr})
   (* Polymorphic Types *)
   | TLam (e : expr)
   | TApp (e : expr)
@@ -44,50 +28,22 @@ Module SysF.
   Global Instance Subst_expr : Subst expr. derive. Defined.
   Global Instance SubstLemmas_expr : SubstLemmas expr. derive. Qed.
 
-  (* Notation for bool and nat *)
-  Notation "#♭ b" := (Bool b) (at level 20).
-  Notation "#n n" := (Int n) (at level 20).
 
-  Global Instance expr_dec_eq (e e' : expr) : Decision (e = e').
-  Proof. solve_decision. Defined.
+(*   Global Instance expr_dec_eq (e e' : expr) : Decision (e = e').
+  Proof. solve_decision. Defined. *)
 
   Inductive val :=
   | LamV (e : {bind expr})
   | TLamV (e : {bind 1 of expr})
   | PackV (v : val)
   | UnitV
-  | IntV (n : Z)
   | BoolV (b : bool)
-  | PairV (v1 v2 : val)
-  | InjLV (v : val)
-  | InjRV (v : val).
+  | PairV (v1 v2 : val).
 
-  (* Notation for bool and nat *)
-  Notation "'#♭v' b" := (BoolV b) (at level 20).
-  Notation "'#nv' n" := (IntV n) (at level 20).
 
-  Global Instance val_dec_eq (v v' : val) : Decision (v = v').
-  Proof. solve_decision. Defined.
+(*   Global Instance val_dec_eq (v v' : val) : Decision (v = v').
+  Proof. solve_decision. Defined. *)
 
-  Definition int_binop_eval (op : binop) : Z → Z → val :=
-    match op with
-    | Add => λ a b, #nv(a + b)
-    | Sub => λ a b, #nv(a - b)
-    | Mult => λ a b, #nv(a * b)
-    | Eq => λ a b, #♭v (bool_decide (a = b))
-    | Le => λ a b, #♭v (bool_decide (a ≤ b)%Z)
-    | Lt => λ a b, #♭v (bool_decide (a < b)%Z)
-    end.
-
-  Definition binop_eval (op : binop) : val → val → option val :=
-    match op with
-    | Eq => λ a b, Some (#♭v (bool_decide (a = b)))
-    | _ => λ a b,
-        match a, b with
-        | IntV an, IntV bn => Some (int_binop_eval op an bn)
-        | _, _ => None
-        end
-    end.
 
   Global Instance val_inh : Inhabited val := populate UnitV.
 
@@ -97,27 +53,22 @@ Module SysF.
     | TLamV e => TLam e
     | PackV v => Pack (of_val v)
     | UnitV => Unit
-    | IntV v => Int v
     | BoolV v => Bool v
     | PairV v1 v2 => Pair (of_val v1) (of_val v2)
-    | InjLV v => InjL (of_val v)
-    | InjRV v => InjR (of_val v)
     end.
 
-  Fixpoint to_val (e : expr) : option val :=
+End SysF.
+(*   Fixpoint to_val (e : expr) : option val :=
     match e with
     | Lam e => Some (LamV e)
     | TLam e => Some (TLamV e)
     | Pack e => PackV <$> to_val e
     | Unit => Some UnitV
-    | Int n => Some (IntV n)
     | Bool b => Some (BoolV b)
     | Pair e1 e2 => v1 ← to_val e1; v2 ← to_val e2; Some (PairV v1 v2)
-    | InjL e => InjLV <$> to_val e
-    | InjR e => InjRV <$> to_val e
     | _ => None
-    end.
-
+    end. *)
+(* 
   (** Evaluation contexts *)
   Inductive ectx_item :=
   | AppLCtx (e2 : expr)
@@ -291,3 +242,4 @@ Global Hint Extern 10 (AsVal _) =>
 Local Hint Resolve language.val_irreducible : core.
 Local Hint Resolve to_of_val : core.
 Local Hint Unfold language.irreducible : core.
+ *)
