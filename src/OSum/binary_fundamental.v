@@ -18,9 +18,6 @@ end.
 Section bin_log_def.
     Context `{logrelSig Σ, configSpec Σ}.
 
-    Check interp_expr.
-    Check interp.
-    Check interp_env.
     Definition bin_log_related (Γ : list type)(e e' : expr)(t : type) : iProp Σ := 
         (□ ∀ rho ws, 
             spec_ctx ∧ ⟦ Γ ⟧* rho ws -∗  
@@ -98,7 +95,7 @@ Section fundamental.
     ⟦ τ' ⟧ₑ Δ (fill K e, fill K' e').
   Proof. iApply (interp_expr_bind (_, _) (_, _)). Qed.
 
-    Lemma interp_expr_val vv rho t : ⟦ t ⟧ rho vv -∗ ⟦ t ⟧ₑ rho (of_val vv.1, of_val vv.2).
+  Lemma interp_expr_val vv rho t : ⟦ t ⟧ rho vv -∗ ⟦ t ⟧ₑ rho (of_val vv.1, of_val vv.2).
   Proof. destruct vv. iIntros "?" (?) "?". iApply wp_value. iExists _. iFrame. Qed.
 
     Lemma bin_log_rel_pair Γ t1 t2 e1 e2 e3 e4 :
@@ -250,19 +247,6 @@ Section fundamental.
         repeat iSplit; try done.
     Qed.
 
-
-(*         (* break apart out assumptions on the pair or cases and pair of e:t  *)
-        iDestruct "Hcv" as "[%l [%l' [%Heqcase Hinv]]]"; fold interp in * ;inversion Heqcase; subst.
-        iIntros (K') "Hspec".
-        iInv "Hinv" as "foo". (* if we use inv, can use iInv when the goal is a Wp *)
-        {
-            apply ectx_language_atomic; simpl.
-            2:{ red. intros. inversion H1. }
-            simpl. red. intros. apply prim_base_irreducible.
-             red. intros. unfold not. intros.  
-        }
- *)
-
     Lemma bin_log_rel_caseof Γ e1 e2 e3 e4 e1' e2' e3' e4' t1 t2: 
         Γ ⊨ e1 ≤log≤ e1' : TOSum -∗
         Γ ⊨ e2 ≤log≤ e2' : TCase t1 -∗
@@ -365,8 +349,6 @@ Section fundamental.
         iApply "yosh".
     Qed.
 
-    Check subset.
-
     Lemma views (e : expr)(s s' : gsetUR loc)(p : s ⊆ s') :
         own config_name (● (Excl' e , s') ⋅ ◯ (Excl' e , s')) ==∗ 
         own config_name (● (Excl' e , s')) ∗
@@ -461,7 +443,7 @@ Section fundamental.
          *)
         iCombine "Hspec" "cfg" as "cfgv".
         iCombine "Hown cfgv" gives
-        %[[Htpj Hslt]%prod_included ?]
+        %[[Htpj Hslt]%prod_included _]
             %auth_both_valid_discrete.
         simpl in *.
         (*  *)
@@ -596,7 +578,7 @@ Section fundamental.
             rewrite big_opL_cons.
             iSplit.
             - iExists (interp t rho); iApply "npred".
-            - done.
+            - iApply "preds".
         }
 
         (* step 6: prove the WP condition, relational interpretation of Case *)
@@ -610,138 +592,6 @@ Section fundamental.
         iExists lp.
         repeat try iSplit ; try done.
     Qed.
-
-        Unshelve.
-        unfold Exclusive.
-        intros.
-        Check lookup_empty.
-        rewrite lookup_empty in H4.
-        destruct y.
-        + compute in H4. admit.
-        + compute in H4.
-        Check option_valid.
-
-         
-
-        (* goal, can i use 
-          Lemma auth_frag_included dq a b1 b2 :
-            ◯ b1 ≼ ●{dq} a ⋅ ◯ b2 ↔ b1 ≼ b2. 
-        
-            to 
-        *)
-
-
-(* 
-        (* open the state invariant data *)
-        iDestruct "ownS" as "[%e [%s' [%s'' [cfg  [nbij [rbij preds]]]]]]".
-        iCombine "Hspec" "cfg" as "cfgv".
-
-        (* wait... by threading ownership of config through the state interp...
-        
-        are we in conflict with the "spec_ctx" that holds an authoritative element of the config?
-
-        perhaps not. since the element is exclusive, so we just have two 
-
-
-        having two auth elements at the same gname feels incorrect...
-        one of them has to be used to reestablish the invariant
-
-        Having ownership with DFrac 1 twice can be used to derive False
-
-        Does unfolding the "do_step_new" proof here help at all..?
-        *)
- *)
-
-
-        
-        iMod (do_step_new with "[Hspec]") as "[%sspec Hspec]".
-        { done. }
-        { iSplit; done. }
-        simpl.
-        iDestruct "ownS" as "[%e [%s' [%s'' [cfg  [nbij [rbij preds]]]]]]".
-        (* combine the config data  *)
-        iCombine "cfg" "Hspec" gives "%cfg".
-        rewrite auth_frag_op_valid in cfg.
-        Check cmra_valid_op_r _ _ cfg.
-        Check pair_op.
-        rewrite -pair_op in cfg.
-        Check cmra_valid_op_r.
-        rewrite pair_valid  in cfg.
-        destruct cfg as [ev sv].
-        compute in sv.
-
-        unfold op in sv.
-
-        pose proof (cmra_valid_op_r cfg).
-        Check valid_op.
-        rewrite prod_validI in cfg.
-        Check prod_valid.
-        apply auth_frag_valid in cfg.
-        Check auth_frag_op_valid.
-
-
-        apply auth_both_valid_discrete in cfg as [inc _].
-        apply prod_included in inc as [tp st]. simpl in *.
-        apply singleton_included_l in tp as [exc [lkup einc]].
-        rewrite lookup_singleton in lkup.
-        rewrite -lkup in einc.
-        apply Excl_included in einc.
-        apply gset_included in st.
-        
-
-        
-
-        apply auth_both_dfrac_valid in huh as [huh1 [huh2 huh3]].
-
-
-    Admitted.
-(*         
-        iDestruct "ownS" as "[%s' [%s'' [d e]]]". simpl.
-        iSplitR "Hspec".
-        2:{
-            iModIntro.
-            iExists (CaseV (fresh sspec)). simpl.
-            iSplit.
-            + admit.
-            + iExists (fresh s), (fresh sspec).
-            iSplit; try done.
-            unfold case_inv.
-            unfold pointsto_def. simpl.
-            admit.
-         }
-        iModIntro.
-        iExists (fresh s' :: s) ,s''.
-        iSplitL.
-        +
-        iExists ((fresh sspec) :: sspec) , s'.
-        iSplitL.
-        * iApply auth_own_mono.
-
-
-        iCombine "Hspec" "d" gives "%what".
-        simpl in what.
-
-
-        iModIntro.
-        iSplitL.
-        iExists ((fresh sspec) :: sspec).
-        iSplit.
-        iApply fupd_frame_l.
-        iSplitL.
-        + iIntros (s') "Hbij".
-
-   
-        simpl.
-
-
-        asimpl.
-        iApply wp_wand.
-        iApply wp_new.
-        iIntros (v) "[%l [%leq ownl]]". subst.
-        
-
-        unfold case_inv. unfold pointsto_def. simpl. subst.
-    Admitted. *)
 
 
     Theorem binary_fundamental Γ e t : 
@@ -760,7 +610,7 @@ Section fundamental.
         - iApply bin_log_rel_snd; done.
         - iApply bin_log_rel_osum ; done.
         - iApply bin_log_rel_caseof; done.
-        - iApply bin_log_rel_new.
+        - iApply bin_log_rel_new. 
         - admit.
         - admit.
         - admit.

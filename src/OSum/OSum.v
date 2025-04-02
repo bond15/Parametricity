@@ -8,7 +8,7 @@ Module OSum.
 
 
 Inductive type :=
-  | TUnit :  type
+  | TUnit : type
   | TInt : type
   | TBool : type
   | TOSum : type
