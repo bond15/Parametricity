@@ -1,8 +1,55 @@
-From iris.algebra Require Export ofe cofe_solver .
+From iris.algebra Require Export gmap ofe cofe_solver .
+From MyProject.src.SystemG Require Export SystemG persistent_pred.
+From iris.base_logic Require Import iprop upred .
 
 Module Gtypes.
 
 (* guarded type *)
+
+
+(* 
+Fail Fixpoint stype (n : nat) : Prop :=
+match n with 
+| O => False
+| S k => forall (j : nat)(phi : gmap loc (stype k))(v : val) , j ≤ k /\ storeType j phi
+end
+with storeType (k : nat)(phi : gmap loc (stype k)) : Prop := forall (l in dom phi), stype k ... phi l = . *)
+
+
+Inductive stype (n : nat) : gmap loc (stype)
+
+
+    Context `{Σ : gFunctors}.
+
+Definition TypeF : oFunctor := (gmapOF loc (▶idOF) * valO -n> iPropO Σ)%OF.
+
+Definition TypeO : solution (TypeF) := solver.result _.
+
+Definition Type' : ofe := oFunctor_apply TypeF TypeO.
+Definition fold : TypeO -n> Type' := ofe_iso_2 TypeO.
+Definition unfold : Type' -n> TypeO := ofe_iso_1 TypeO.
+
+Example base : Type'.
+unfold Type'. simpl.  
+
+(laterO TypeO).
+apply Next. apply unfold. unfold Type'. simpl.
+
+Example foo  : prodO (gmapO loc (laterO TypeO)) valO.
+constructor.
+{
+  exact  {[ 3 :=  ]} .
+}
+Program Example foo : prodO (gmapO loc (laterO TypeO)) valO -n> iPropO Σ := 
+λne p, match p with 
+      | (phi , v) => True%I 
+end.
+
+
+Example ty : Type'.
+unfold Type'.
+simpl.
+
 
 
 Check solution.
@@ -31,12 +78,35 @@ Definition legal : oFunctor := (▶ (∙ -n> ∙)) + unitO.
 
 (* sick... this works most of the time... with the exception of missing typeclass instance not in scope
 for complicated OFEs *)
-Definition legal_sol : solution (legal) := solver.result _.
+Definition LegalO : solution (legal) := solver.result _.
 
-Definition Legal : ofe := oFunctor_apply legal legal_sol.
+Definition Legal : ofe := oFunctor_apply legal LegalO.
 
-Example foo : Legal := inl (Next (λne x, x)).
+Check ofe_iso_1 LegalO.
+Definition fold : LegalO -n> Legal := ofe_iso_2 LegalO.
+Definition unfold : Legal -n> LegalO := ofe_iso_1 LegalO.
+(* nice, syntax for writing non expansive morphisms*)
+Example foo : Legal := inl (Next (λne (x : LegalO), x)).
 
+Program Definition  bar : Legal -n> Legal := 
+λne (x : Legal), 
+  (match x with 
+    | inl (Next f) => fold (f (unfold (inr ())))(*  illegal  *)
+    | inr () => x
+  end).
+Next Obligation.
+unfold Proper. red. intros.
+destruct H.
+{ intros. try rewrite -H. destruct H. admit. } (* only know that f is equal after at least one timestep *)
+destruct y1, y2. eauto.
+Abort.
+
+(* cursed *)
+Definition zero : Legal := inr ().
+Program Definition suc : Legal -n> Legal := λne l, inl (Next (λne _, unfold l)).
+Next Obligation.
+  unfold Proper. red. intros.
+  destruct H.
 
 (* guarded stream  *)
 

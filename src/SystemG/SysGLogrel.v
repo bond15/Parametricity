@@ -1,6 +1,6 @@
 From stdpp Require Import base gmap coPset tactics proof_irrel.
 
-From iris.base_logic Require Import invariants iprop upred.
+From iris.base_logic Require Import invariants iprop upred saved_prop gen_heap.
 From iris.base_logic.lib Require Import ghost_map.
 From iris.algebra Require Import cofe_solver gmap_view excl.
 From iris.proofmode Require Import proofmode.
@@ -12,23 +12,36 @@ From Equations Require Import Equations.
 From MyProject.src.SystemG Require Export SystemG persistent_pred.
 
 
-Definition iname : namespace := nroot .@ "iname".
-Check fixpoint.
 
 Module SysGLogrel.
 Import SystemG.
-    Definition typeO : ofe := leibnizO type.
-    Definition typeOF : oFunctor := typeO.
-    Definition locO := natO.
 
-    Definition AgreeMap (K : Type)`{_ : Countable K}`{_ : EqDecision K}(V : ofe) := gmapR K (agreeR V).
 
+
+    Check savedPredG _ _.
+(* 
 Section WorldDef.
     Context `{Σ : gFunctors}.
 
-    (* does iProp need to be guarded here *)
-    Definition Rel : ofe := prodO exprO exprO -n> iProp Σ.
-    Definition SomeRel : ofe := prodO (prodO typeO typeO) Rel.
+    Check uPredO.
+    Check idOF.
+    Check laterOF.
+    Check discrete_funOF.
+    Check (expr -d> (▶ ∙))%OF. (* oFunctor *)
+    Check (oFunctor_apply (expr -d> (▶ ∙))%OF).
+    Check iProp Σ.
+    Check prodO exprO exprO -n> iProp Σ.
+    Check agreeR.
+    Check iPropI Σ.
+    Check persistent_pred.
+
+    Definition typeO : ofe := leibnizO type.
+
+    Definition AgreeMap (K : Type)`{_ : Countable K}`{_ : EqDecision K}(V : ofe) := gmapR K (agreeR V).
+
+    (* does iProp need to be guarded here? *)
+    Definition Rel := prodO exprO exprO -n> iProp Σ.
+    Definition SomeRel := prodO (prodO typeO typeO) Rel.
 
     Definition stateMap := AgreeMap loc typeO.
     Definition concMap := AgreeMap loc (prodO locO locO).
@@ -36,96 +49,203 @@ Section WorldDef.
 
     Definition World_cmra : cmra := prodR (prodR (prodR stateMap stateMap) concMap) relMap.
 
-    (* Attempt : trying to override/extend the validity of the compositional camera
-      to include the invariant on worlds. (as opposed to enforcing it with Own/Inv/World Satisfaction)  *)
+End WorldDef. *)
 
-    Definition World : ofe := cmra_car World_cmra.
-
-    Definition Conc (c : concMap) : Prop. Admitted.
-
-    Definition well_typed_stateMap (s : stateMap) : Prop. Admitted.
-
-    Definition coherentMaps (eta : concMap) (rho : relMap): Prop. Admitted.
-
-    Definition validSomeRel (validWorld : World -> Prop)(s : agree SomeRel) : Prop := 
-    exists (w : World), validWorld  w.
-(*     pose proof (elem_of_agree s).
-    Admitted. *)
-
-
-    Fixpoint wValidNFix (n : nat) : World -> Prop := fun w => 
-    match n with 
-    | O => True (* TODO *)
-    | S n => 
-        let s1 : stateMap := w.1.1.1 in
-        let s2 : stateMap := w.1.1.2 in
-        let eta : concMap := w.1.2 in 
-        let rho : relMap := w.2 in 
-            (* reusing the validity of the the AgreeMap structure *)
-            validN (S n) s1 /\
-            validN (S n) s2 /\
-            validN (S n) eta /\
-            validN (S n) rho /\
-            (* validity of World *)
-            (* state maps only hold well typed terms *)
-            well_typed_stateMap s1 /\
-            well_typed_stateMap s2 /\
-            (* Conc: valid concretization map *)
-            Conc eta /\ 
-            (* Interp: valid semantic relation map *)
-            map_Forall (fun k v => validSomeRel (wValidNFix n) v ) rho /\
-            (* domains line up *)
-            dom eta = dom rho /\
-            (* partial bijection of eta and rho *)
-            coherentMaps eta rho 
-    end.
-
-    (* override the existing instance (hide the other instance) 
-       or just rename the type of the carrier ? *)
-
-    Local Instance World_validN: ValidN World  := wValidNFix.
-    
-    Local Instance World_valid : Valid World := fun w => forall n, wValidNFix n w.
-
-
-    (* using existin core should be fine *)
-    Local Instance World_pcore  : PCore World . apply _. Defined.
-
-    (* same with Op *)
-    Local Instance World_op : Op World. apply _. Defined.
-
-    (* Should be able to recyle some of the proofs from the compositional camera *)
-    Lemma World_cmra_mixin : CmraMixin World.
-    Proof.
-    split.
-    4:{ intros. eauto. }
-    3:{ intros. admit. } Admitted.
-    
-
-    Canonical Structure World_cmra : cmra := Cmra World World_cmra_mixin.    
-        
-End WorldDef.
-
-    Class logrelSig (Σ : gFunctors) := {
+(*     Class logrelSig (Σ : gFunctors) := {
         #[local] world_res :: inG Σ (@World_cmra Σ) ;
         #[local] log_inv :: invGS Σ ;
         #[local] type_heap :: ghost_mapG Σ loc type;
         heap_name : gname ;
         world_name : gname ;
+    }. *)
+
+    Class logrelSig  Σ := HeapIG {
+        heapI_invG : invGS Σ;
+        heapI_preds :: savedPredG Σ val ;
+        heapI_gen_heapG :: gen_heapGS loc type Σ;
     }.
+
 
     (* TODO.. determine a proper way to map concrete program state into 
               ghost state.
 
               It would be nice to use WP rules to "execute" the program to a value.. 
               but we have two executions running in parallel
+
+
+
+
+              Global Instance heapIG_irisG `{heapIG Σ} : irisGS F_mu_ref_conc_lang Σ := {
+  iris_invGS := heapI_invG;
+  num_laters_per_step _ := 0;
+  state_interp σ  _ _ _ := gen_heap_interp σ;
+  fork_post _ := True%I;
+  state_interp_mono _ _ _ _ := fupd_intro _ _
+}.
+
      *)
     Global Instance heapIG_irisG `{logrelSig Σ} : irisGS SystemG_lang Σ := {
+        iris_invGS := heapI_invG;
         num_laters_per_step _ := 0;
-        state_interp s  _ _ _ := ghost_map_auth heap_name 1 s;
+        state_interp s  _ _ _ := gen_heap_interp s;
         fork_post _ := True%I;
         state_interp_mono _ _ _ _ := fupd_intro _ _
     }.   
+
+    Notation "l ↦ᵢ v" := (pointsto (L:=loc) (V:=type) l (DfracOwn 1) v)
+    (at level 20, format "l  ↦ᵢ  v") : bi_scope.
+
+    Context `{ logrelSig Σ}.
+
+    Definition well_typed (s : state)(e : expr)(t : type) : Prop. Admitted.
+
+    (* add basic update ? *)
+    Definition Atom_e (t : type) : expr -> iProp Σ := 
+        fun e => (∃(s : state), ([∗ map] l ↦ ty ∈ s, l ↦ᵢ ty)∗ ⌜well_typed s e t⌝)%I.
+
+    Definition Atom_v (t : type) : val -> iProp Σ  :=
+        fun v => Atom_e t (of_val v).
+
+
+    Definition Rel : Type := type * (val -> iProp Σ).
+
+    Definition Rho := gmap loc Rel.
+    
+    (*  should be persistent predicates  *)
+    Definition VRelType (t : type) : Type :=  Rho -> (val -> iProp Σ).
+
+
+    (* build a substitution from rho and apply it to t *)
+    Definition sub (t : type)(r : Rho) : type. Admitted.
+    Definition sub' (t : type)(s : state) : type. Admitted.
+
+
+    Check var.
+    Print var.
+    Print loc.
+    Definition vl (v : var) : loc := v.
+
+    Definition interp_TyVar (l : loc) : VRelType (TVar l) := 
+        fun rho v => match (rho !! l) with 
+                    | None => False%I 
+                    | Some (ty, rel) => rel v%I (* later ..? *)
+        end.
+
+    (*  this could just be checking if v is bool or not... right..? *)
+    Definition interp_TBool : VRelType TBool :=
+        fun rho v => ⌜exists (b : bool), v = BoolV b⌝%I.
+(*         fun rho => Atom_v TBool .
+ *)
+    Definition interp_TUnit : VRelType TUnit :=
+        fun rho v => ⌜v = UnitV⌝%I.
+
+
+(*     Example exprf : ⊢ interp_TBool empty (BoolV true).
+    Proof.
+        unfold interp_TBool.
+        unfold Atom_v.
+        unfold Atom_e.
+        iExists empty.
+        iSplit.
+        { auto. }
+        iPureIntro.
+        (* obviously true!*)
+        Abort. *)
+
+    Definition interp_TProd {t1 t2 : type}(interp1 : VRelType t1)(interp2 : VRelType t2) : VRelType (TProd t1 t2) 
+        := fun rho v => (∃ (v1 v2 : val), 
+                            Atom_v (sub (TProd t1 t2) rho) (PairV v1 v2) ∗
+                            interp1 rho v1 ∗ 
+                            interp2 rho v2)%I.
+(*     
+      Program Definition interp_arrow
+      (interp1 interp2 : listO D -n> D) : listO D -n> D :=
+    λne Δ,
+    PersPred (λ w, □ ∀ v, interp1 Δ v →
+                        WP App (of_val w) (of_val v) {{ interp2 Δ }})%I.
+  Solve Obligations with repeat intros ?; simpl; solve_proper. *)
+
+    Definition interp_TArrow {t1 t2 : type}(interp1 : VRelType t1) (interp2 : VRelType t2) : VRelType (TArrow t1 t2) :=
+        fun rho v => (Atom_v (sub (TArrow t1 t2) rho) v ∗
+                     (∀ (v1 : val), interp1 rho v1 → WP App (of_val v) (of_val v1) {{ interp2 rho }})
+                     (* Does this work for us... the second condition is from a logical approach to type soundness *)
+        )%I.
+
+
+    Definition fv(t : type) : gset loc. Admitted.
+
+    Check elem_of (fv TBool) _.
+    Check VRelType TBool .
+    Print VRelType .
+
+    (* need an invariant on the type store and the predicate store 
+dom s = dom rho /\ forall (l : loc), loc ∈ (dom s) → True
+     *)
+    Definition interp_Omega (t : type)(rel : Rel) : iProp Σ := 
+        (∃ (t' : type)(s : state)(rho : Rho), 
+            ⌜fv t' = empty /\ sub' t' s = t /\⌝ →
+            ∀ (v1 : val), r v1 → 
+        )%I.  
+    Admitted.
+
+    (* try saved pred  *)
+    Check saved_pred_own.
+    Print gname.
+    Check encode .
+
+    Definition hmm (l : loc) :positive := encode l.
+
+    Example saved (l : loc)(rho : Rho) : iProp Σ 
+    := saved_pred_own (encode l) (DfracOwn 1)  (fun v => interp_TBool rho v).
+  
+
+     Definition interp_TForall {t : type}(interp : VRelType t) : VRelType (TForall t) :=
+        fun rho v => (Atom_v (sub (TForall t) rho) v ∗
+                    ∀ (r : Rel),∃(l : loc), l ↦ᵢ r.1 →  WP TApp (of_val v) {{ interp rho}}
+        )%I.
+(*    
+
+  Program Definition interp_forall
+      (interp : listO D -n> D) : listO D -n> D :=
+    λne Δ,
+    PersPred (λ w, □ ∀ τi : D, WP TApp (of_val w) {{ interp (τi :: Δ) }})%I.
+  Solve Obligations with repeat intros ?; simpl; solve_proper.
+
+
+
+
+     fun rho => fun p => 
+            (∃ (e1 e2 : expr) ,
+            ⌜ p.1 = (TLamV e1) /\ p.2 = (TLamV e2)⌝ ∗ 
+                let c := (concretize (TForall t ) rho) in 
+                Atom c.1 c.2 (of_val p.1) (of_val p.2) ∗
+                ∀ (w1 w2 : World), (own world_name w1  ={ winv_mask }=∗ own world_name w2) -∗ 
+                    ∀ (t1 t2 : type)(r : @SomeRel Σ), TRel w2 ((t1 , t2), r) -∗ 
+                        ▷ (interp_expr interp rho (e1 , e2))
+                        (* TODO, extend rho with r, perform type substitution*)
+            )%I. *)
+        
+    Fixpoint interp (t : type) : VRelType t :=
+        match t with 
+        | TBool => interp_TBool
+        | TProd t1 t2 => interp_TProd (interp t1) (interp t2)
+        | TArrow t1 t2 => interp_TArrow (interp t1) (interp t2)
+        | _ => fun _ => fun _ => True%I 
+        end.
+
+
+    Example fooba : 
+    ⊢  interp 
+        (TArrow (TVar 0) (TVar 0)) 
+        {[ 0 := (TBool , (fun b => (⌜b  = BoolV true ⌝%I))) ]} 
+        (LamV (Var 0)).
+    unfold interp.
+    unfold interp_TArrow. iSplitL.
+    {unfold Atom_v. unfold Atom_e. simpl. }
+  
+
+
+
 
     Definition winv : positive := encode "winv".
     Definition winv_mask : coPset := singleton winv.
@@ -137,26 +257,13 @@ End WorldDef.
 
     Definition World : ofe := cmra_car (@World_cmra Σ).
 
-    Definition Conc_Inv (c : concMap) : iProp Σ.
-    Admitted.
-    
-    Definition well_typed (s : stateMap)(e : expr)(t : type) : Prop.
-    Admitted.
 
-    (* Here is the tricky part.. the world invariant uses Atom and Atom uses world_inv
-    need a mutual guarded fixpoint..?  
-    https://plv.mpi-sws.org/coqdoc/iris/iris.algebra.ofe.html#fixpointAB
-    *)
-    Definition World_Inv (w : World) : iProp Σ :=
-        match w with 
-        | (((s1,s2),eta),rho) => Conc_Inv eta ∗ ⌜dom eta = dom rho⌝%I
-        end.
-    
+
     Definition Atom (t1 t2 : type) : expr -> expr -> iProp Σ :=
         fun e1 e2 => 
             (∃  (w : World), 
                 ▷ (own world_name w ∗ 
-                inv inv_name (World_Inv w)) ∗ 
+                inv inv_name  (World_Inv w)) ∗ 
                 ⌜ well_typed (w.1.1.1) e1 t1 /\ 
                   well_typed (w.1.1.2) e2 t2 ⌝)%I.
 
@@ -276,12 +383,12 @@ End WorldDef.
      Locate own.
      Check own_def.
 
-    Check inv_alloc.
+(*     Check inv_alloc.
     Check own_mono.
     Lemma emptyInv (w : World ): ⊢ |==> inv inv_name (World_Inv w).
     Proof.
         iAssert (▷ (World_Inv w))%I as "D". admit.
-        iApply inv_alloc.
+        iApply inv_alloc. *)
     Lemma test : ⊢ interp TBool empty ((BoolV true) ,(BoolV false)).
     Proof.
         simpl.
@@ -305,9 +412,212 @@ End WorldDef.
 
 
 End SysGLogrel.
+
+
+
+
+
 (* 
 
     Graveyard of other attempted definitions
+
+
+
+
+
+    Definition Conc (c : concMap) : Prop. Admitted.
+
+    Definition well_typed_stateMap (s : stateMap) : Prop. Admitted.
+
+    Definition coherentMaps (eta : concMap) (rho : @relMap Σ): Prop. Admitted.
+(* 
+
+    Program Definition validSomeRel : (World -n> iProp Σ) -n> (agree (@SomeRel Σ)) -n> iProp Σ :=
+        λne rec sr, True%I.
+
+    Program Definition World_Inv_rec (rec : World -n> iProp Σ) : (World -n> iProp Σ) := λne w,
+        match w with 
+        | (((s1,s2),eta),rho) => (
+            ⌜Conc eta /\ 
+            dom eta = dom rho⌝
+            ∗
+            [∗ map] k ↦ v ∈ rho, validSomeRel rec v)%I
+        end.
+    Next Obligation. Admitted. *)
+
+    (*  break into the bones and define the invariant manually ? 
+    
+        you are literally just defining validity... 
+    *)
+
+    Fixpoint peel (n m : nat) : nat :=
+    match (n , m) with 
+        | (O , _) => O 
+        | (n , O) => n 
+        | (S n , S m) => peel n m
+    end.
+
+
+    Fixpoint dumb (n : nat) : Prop :=
+        match n with 
+        | O => True 
+        | (S n) => exists (m : nat), dumb (peel n m)
+        end.
+
+    Definition hack : uPred (@World_cmra  Σ).
+    split with (fun n m => True).
+    intros.
+    done.
+    Qed.
+    Definition hack : iProp Σ.
+    Check UPred World_cmra (fun n w => True).
+    try apply @UPred with World_cmra.
+    eapply UPred.
+    Print iResUR.
+
+    Program Definition validSomeRel : (World -n> iProp Σ) -n> (agree (@SomeRel Σ)) -n> iProp Σ :=
+        λne rec sr, (▷ (∃ (w : World), rec w))%I.
+
+    Next Obligation. Admitted. 
+    Next Obligation. Admitted. 
+
+
+    Program Definition World_Inv_rec (rec : World -n> iProp Σ) : (World -n> iProp Σ) := λne w,
+        match w with 
+        | (((s1,s2),eta),rho) => (
+            ⌜Conc eta /\ 
+            dom eta = dom rho⌝
+            ∗
+            [∗ map] k ↦ v ∈ rho, validSomeRel rec v)%I
+        end.
+    Next Obligation. Admitted. 
+
+    Local Instance cwinv : Contractive (World_Inv_rec). Admitted.
+
+    Definition Word_Inv : (World -n> iProp Σ) := fixpoint World_Inv_rec.
+
+
+    Definition well_typed (s : stateMap)(e : expr)(t : type) : Prop.
+    Admitted.
+    Definition Conc_Inv (c : concMap) : iProp Σ.
+    Admitted.
+    (* Here is the tricky part.. the world invariant uses Atom and Atom uses world_inv
+    need a mutual guarded fixpoint..?  
+    https://plv.mpi-sws.org/coqdoc/iris/iris.algebra.ofe.html#fixpointAB
+    *)
+    Definition World_Inv (w : World) : iProp Σ :=
+        match w with 
+        | (((s1,s2),eta),rho) => Conc_Inv eta ∗ ⌜dom eta = dom rho⌝%I
+        end.
+    
+    Lemma summon (K : Type)`{_ : EqDecision K}`{_ : Countable K}(V : Type) : EqDecision (gmap K V).
+    Fail Definition addworldinf (w : World)(n : namespace) : namespace := n .@ w.
+    (* to do this, would need EqDecision World and Countable World which ... *)
+    Check gmap_eq_dec. (* needs EqDecision on the value type, which with rho... goodluck... not decidable relations  *) 
+
+
+(* 
+Module Attempt.
+    Context `{Σ : gFunctors}.
+    (* Attempt : trying to override/extend the validity of the compositional camera
+      to include the invariant on worlds. (as opposed to enforcing it with Own/Inv/World Satisfaction)  *)
+    (* does iProp need to be guarded here *)
+    Definition Rel : ofe := prodO exprO exprO -n> iProp Σ.
+    Definition SomeRel : ofe := prodO (prodO typeO typeO) Rel.
+
+    Definition stateMap := AgreeMap loc typeO.
+    Definition concMap := AgreeMap loc (prodO locO locO).
+    Definition relMap := AgreeMap loc SomeRel.
+
+    Definition World_cmra : cmra := prodR (prodR (prodR stateMap stateMap) concMap) relMap.
+
+    Definition World : ofe := cmra_car World_cmra.
+
+    Definition Conc (c : concMap) : Prop. Admitted.
+
+    Definition well_typed_stateMap (s : stateMap) : Prop. Admitted.
+
+    Definition coherentMaps (eta : concMap) (rho : relMap): Prop. Admitted.
+
+    Definition validSomeRel (validWorld : World -> Prop)(s : agree SomeRel) : Prop.
+    pose proof (elem_of_agree s).
+    destruct H.
+
+    Search (uPred_later).
+    Check uPred_primitive.later_mono.
+    exists (w : World), validWorld  w.
+(*     pose proof (elem_of_agree s).
+    Admitted. *)
+
+
+    Fixpoint wValidNFix (n : nat) : World -> Prop := fun w => 
+    match n with 
+    | O => True (* TODO *)
+    | S n => 
+        let s1 : stateMap := w.1.1.1 in
+        let s2 : stateMap := w.1.1.2 in
+        let eta : concMap := w.1.2 in 
+        let rho : relMap := w.2 in 
+            (* reusing the validity of the the AgreeMap structure *)
+            valid s1 /\
+            valid s2 /\
+            valid eta /\
+            valid rho /\
+            (* validity of World *)
+            (* state maps only hold well typed terms *)
+            well_typed_stateMap s1 /\
+            well_typed_stateMap s2 /\
+            (* Conc: valid concretization map *)
+            Conc eta /\ 
+            (* Interp: valid semantic relation map *)
+            map_Forall (fun k v => validSomeRel (wValidNFix n) v ) rho /\
+            (* domains line up *)
+            dom eta = dom rho /\
+            (* partial bijection of eta and rho *)
+            coherentMaps eta rho 
+    end.
+
+    (* override the existing instance (hide the other instance) 
+       or just rename the type of the carrier ? *)
+
+    Local Instance World_validN: ValidN World  := wValidNFix.
+    
+    Local Instance World_valid : Valid World := fun w => forall n, wValidNFix n w.
+
+
+    (* using existin core should be fine *)
+    Local Instance World_pcore  : PCore World . apply _. Defined.
+
+    (* same with Op *)
+    Local Instance World_op : Op World. apply _. Defined.
+
+    (* Should be able to recyle some of the proofs from the compositional camera *)
+    Lemma World_cmra_mixin : CmraMixin World.
+    Proof.
+    split.
+    4:{ intros. eauto. }
+    3:{ intros. admit. } Admitted.
+
+(*     Canonical Structure World_cmra : cmra := Cmra World World_cmra_mixin.    
+ *)        
+End Attempt. 
+*)
+
+
+(* 
+Class savedAnythingG (Σ : gFunctors) (F : oFunctor) := SavedAnythingG {
+  #[local] saved_anything_inG :: inG Σ (dfrac_agreeR (oFunctor_apply F (iPropO Σ)));
+  saved_anything_contractive : oFunctorContractive F
+}.
+
+
+Notation savedPredG Σ A := (savedAnythingG Σ (A -d> ▶ ∙)).
+Notation savedPredΣ A := (savedAnythingΣ (A -d> ▶ ∙)).
+
+Notation "T -d> F" := (@discrete_funOF T%type (λ _, F%OF)) : oFunctor_scope.
+
+
+ *)
 
 
     Definition EtaF : oFunctor := gmapOF loc (prodO locO locO).
