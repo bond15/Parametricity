@@ -397,7 +397,7 @@ Section fund.
         (* We have that v1 is a case of τ, so extract that information. *)
         iDestruct "HV1" as "[%l (%l' & %case & #typ)]"; fold interp ; subst.
         (* Now interpret OSum *)
-        iExists l. iExists l'. iExists v2. iExists (interp τ rho).
+        iExists l, l', v2 ,(interp τ rho).
         iSplit.
         iPureIntro. done.
         iSplit. iApply "typ".
@@ -603,7 +603,7 @@ Section fund.
                 iApply "B".
             }
         }
-        iExists (fresh s1). iExists l.
+        iExists (fresh s1), l.
         iSplit. 2:{ done. }
         iSplit. done.
         done.

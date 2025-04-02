@@ -175,13 +175,15 @@ Proof.
   - eapply Lam_typed. eapply Var_typed. reflexivity.
 Qed.  
 
-
-(* example broken free theorem *)
+*)
+(* example broken free theorem 
+but this is not interpreting forall as fresh..
+*)
 Example idTy : type := TForall (TArrow(TVar 0) (TVar 0)).
 Example notId : expr := 
   TLam (
     Lam (
-      New (TVar 0) (
+      LetIn (New (TVar 0)) (
         (CaseOf (Inj (Var 0) (Var 1)) (Var 0) 
           (Var 2)
           (Var 1)
@@ -191,16 +193,19 @@ Proof.
   eapply TLam_typed.
   simpl.
   eapply Lam_typed.
+  eapply LetIn_typed.
+  -
   eapply New_typed.
+  -
   eapply CaseOf_typed.
-  - eapply Inj_typed.
+  +eapply Inj_typed.
     * eapply Var_typed. simpl. reflexivity.
     * eapply Var_typed ; reflexivity.
-  - eapply Var_typed ; reflexivity.
-  - eapply Var_typed. reflexivity.
-  - eapply Var_typed. reflexivity.
+  + eapply Var_typed ; reflexivity.
+  + eapply Var_typed. reflexivity.
+  + eapply Var_typed. reflexivity.
 Qed.
-*)
+
 
   Global Instance expr_dec_eq (e e' : expr) : Decision (e = e').
   Proof. solve_decision. Defined.
