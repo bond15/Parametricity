@@ -90,11 +90,11 @@ Module APL.
 
             apl_forall_type_elim  {Ψ : type -> PROP} t : apl_forall_type (fun t => Ψ t ) ⊢ Ψ t;
 
-            (* relational substitution laws *)
+(*             (* relational substitution laws *)
             apl_rel_sub_arrow (rho : list (@Rel' PROP)) (t1 t2 : type) : 
                 apl_emp ⊢ (@apl_rel_iff t1 t2 
                     (apl_rel_sub (TArrow t1 t2) rho) 
-                    (apl_rel_sub (TArrow t1 t2) rho)) ;
+                    (apl_rel_sub (TArrow t1 t2) rho)) ; *)
 
         }.
     End laws.
@@ -222,7 +222,7 @@ Admitted.
 Definition all_term : forall (t : type), (ty t -> Prop) -> Prop := 
 fun t P => (forall e, P e).
 
-Lemma instance : apl.
+(* Lemma instance : apl.
     apply (APL Prop imp True imp all all_term (@all type) and or ex).
     constructor.
     10:{
@@ -231,7 +231,7 @@ Lemma instance : apl.
     9:{
         intros. unfold imp. intros. unfold all_term. intros. exact (H e H0).
     }
-Abort.
+Abort. *)
 
 Section huh.
     Context {PROP : apl}.
@@ -349,8 +349,8 @@ End tactics.
 Section test.
     Context {PROP : apl}.
     Lemma thing (P Q : PROP)  : ⊢ ((P ∧ (P → Q)) → Q).
-    Proof.
-        apply (apl_impl_intro_r (apl_laws PROP)).
+Abort.
+(*         apply (apl_impl_intro_r (apl_laws PROP)).
         pose proof ()
         apply tac_start.
 
@@ -360,6 +360,6 @@ Section test.
         unfold of_envs.
         unfold of_envs'.
 
+ *)
+End test.
 
-
-End huh.

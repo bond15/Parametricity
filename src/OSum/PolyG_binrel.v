@@ -155,6 +155,9 @@ Section binary_rel.
     Definition interp_TBool : VRel := 
     λne rho, PersPred(fun w => (∃ (b : bool), ⌜w.1 = BoolV b /\ w.2 = BoolV b⌝))%I.
 
+    Definition interp_TUnit : VRel := 
+    λne rho, PersPred(fun w => ⌜w.1 = UnitV /\ w.2 = UnitV⌝)%I.
+
     Program Definition interp_TProd (interp1 interp2 : VRel) : VRel := 
         λne rho, PersPred(fun w => (∃ vv1 vv2 , 
             ⌜w = (PairV vv1.1 vv2.1 ,PairV vv1.2 vv2.2)⌝  ∧ 
@@ -191,6 +194,7 @@ Section binary_rel.
 
     Fixpoint interp (τ : Gtype) : VRel :=
         match τ return _ with
+            | PolyG.TUnit => interp_TUnit
             | PolyG.TDyn => interp_TDyn
             | PolyG.TVar x => interp_TVar x
             | PolyG.TBool => interp_TBool

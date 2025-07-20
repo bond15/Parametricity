@@ -42,6 +42,7 @@ From MyProject.src.OSum Require Export unary_fundamental.
 
 Class capabilities Σ := Cap {
   invs :: invGpreS Σ;
+  configSpec Σ
   res :: RelationResources Σ ;
 }.
 
